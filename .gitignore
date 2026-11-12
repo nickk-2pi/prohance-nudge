@@ -1,0 +1,8 @@
+# sign-in token, settings, sent log, cached workbook (candidate data): never commit
+data/
+data-demo/
+__pycache__/
+*.pyc
+
+.vercel
+.env*
