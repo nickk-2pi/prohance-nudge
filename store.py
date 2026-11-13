@@ -14,7 +14,7 @@ DEFAULT_TEMPLATES = {
             "ProHance recorded {productive_words} of productive time for you on {date}. "
             "The required minimum is {threshold_words} a day.\n\n"
             "{stats}\n\n"
-            "Below is your complete ProHance record for the day, exactly as it appears in the tracker.\n\n"
+            "Your ProHance record for the day:\n\n"
             "{details}\n\n"
             "You must reply to this email at the earliest, as soon as you see it. In your reply, explain why "
             "your productive time was below the required minimum and account for the rest of your logged time, "
@@ -27,7 +27,7 @@ DEFAULT_TEMPLATES = {
         "body": (
             "Hi {first_name},\n\n"
             "ProHance has no activity recorded for you on {date}.\n\n"
-            "Below is your complete ProHance record for the day, exactly as it appears in the tracker.\n\n"
+            "Your ProHance record for the day:\n\n"
             "{details}\n\n"
             "You must reply to this email at the earliest, as soon as you see it. In your reply, explain why "
             "no activity was recorded for you on this day, with supporting evidence.\n\n"
@@ -83,6 +83,11 @@ LEGACY_TEMPLATES = {
          "day.\n\nThanks,\n{sender_name}"),
     ],
 }
+# the first "Action required" wording, which introduced the record differently
+for _kind, _t in DEFAULT_TEMPLATES.items():
+    LEGACY_TEMPLATES[_kind].append((_t["subject"], _t["body"].replace(
+        "Your ProHance record for the day:",
+        "Below is your complete ProHance record for the day, exactly as it appears in the tracker.")))
 
 DEFAULT_CONFIG = {
     "link": "",

@@ -258,7 +258,10 @@ function sectionOf(header) {
 }
 function detailSections(c) {
   const s = { hours: [], login: [], profile: [], notes: [] };
-  for (const [h, v] of c.record || []) s[sectionOf(h)].push([tidyLabel(h), String(v ?? "").trim()]);
+  for (const [h, v] of c.record || []) {
+    if (/^manager\s*\d*$/i.test(String(h).trim())) continue; // Manager1, Manager2: not for the email
+    s[sectionOf(h)].push([tidyLabel(h), String(v ?? "").trim()]);
+  }
   // the part of time on system the tracker puts in neither productive nor non-productive (often "UNKNOWN AOS")
   const get = (re) => { const r = (c.record || []).find(([h]) => re.test(String(h).toLowerCase())); return r ? parseHM(String(r[1])) : null; };
   const onSys = get(/time on system/), prod = get(/^t\.?\s*productive|^productive/), nonProd = get(/non\s*productive/);
