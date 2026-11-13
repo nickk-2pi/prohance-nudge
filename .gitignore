@@ -1,6 +1,8 @@
 # sign-in token, settings, sent log, cached workbook (candidate data): never commit
 data/
 data-demo/
+# shared team settings: interns' names and addresses (share the file privately)
+team-defaults.json
 __pycache__/
 *.pyc
 

@@ -24,20 +24,20 @@ def fake_token(**claims):
 
 class Token(unittest.TestCase):
     def test_pasting_a_token_works(self):
-        app = server.App(Store(tempfile.mkdtemp()), demo_mode=True)  # demo: no call to Microsoft
+        app = server.App(Store(tempfile.mkdtemp(), team_file=None), demo_mode=True)  # demo: no call to Microsoft
         out = app.api_token({"token": fake_token()})["token"]
         self.assertTrue(out["can_read"])
         self.assertEqual(out["user"], "sam@example.com")
         self.assertNotIn("token", out)  # the token itself never goes back to the page
 
     def test_token_without_file_access_is_accepted_but_flagged(self):
-        app = server.App(Store(tempfile.mkdtemp()), demo_mode=True)
+        app = server.App(Store(tempfile.mkdtemp(), team_file=None), demo_mode=True)
         self.assertFalse(app.api_token({"token": fake_token(scp="User.Read")})["token"]["can_read"])
 
 
 class EmailSettings(unittest.TestCase):
     def setUp(self):
-        self.app = server.App(Store(tempfile.mkdtemp()), demo_mode=True)
+        self.app = server.App(Store(tempfile.mkdtemp(), team_file=None), demo_mode=True)
 
     def test_directory_usernames_get_the_domain(self):
         s = self.app.api_settings({"email_domain": "@Example-Tech.com", "directory_text": "Sam Lee\tslee"})["settings"]

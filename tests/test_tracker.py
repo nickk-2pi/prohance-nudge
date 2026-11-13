@@ -146,6 +146,18 @@ def people(**kw):
     return {x["name"]: x for x in tracker.parse_workbook(sheets, TODAY, **kw)["days"][0]["candidates"]}
 
 
+class Record(unittest.TestCase):
+    def test_record_has_every_filled_column_in_sheet_order_but_not_who_or_when(self):
+        head = ["User", "Date", "Emp ID", "Email Id", "Late Login Duration", "Late Login Comment",
+                "T. Logged hours", "T.Productive hours", "T.Idle hours", "No. of Break", "Reason", "Status"]
+        row = ["Ann Lee", 46336, "5560 VM", "alee@x.com", 0.0215277, "Late login in Offline mode.",
+               0.3, 0.1, 0.05, 2, "", None]
+        c = wb_from(("10 Nov", [head, row]))["days"][0]["candidates"][0]
+        self.assertEqual(c["record"], [["Late Login Duration", "0:31"], ["Late Login Comment", "Late login in Offline mode."],
+                                       ["T. Logged hours", "7:12"], ["T.Productive hours", "2:24"],
+                                       ["T.Idle hours", "1:12"], ["No. of Break", "2"]])
+
+
 class Emails(unittest.TestCase):
     def test_company_domain_flags_every_other_domain_with_a_fix(self):
         c = people(domain="ccs-example.com")

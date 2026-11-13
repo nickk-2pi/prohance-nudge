@@ -231,6 +231,9 @@ class App:
                 raise ApiError(f"“{dom}” isn't a domain; it should look like company.com")
             emails_changed |= dom != cfg["email_domain"]
             cfg["email_domain"] = dom
+        if "directory" in p:  # rows from the Settings table; a row with no address means "use the tracker's"
+            p["directory_text"] = "\n".join(f'{str(e.get("name", "")).strip()}\t{str(e.get("email", "")).strip()}'
+                                            for e in p["directory"] or [] if str(e.get("email", "")).strip())
         if "directory_text" in p:
             entries, problems = tracker.parse_directory(p["directory_text"], cfg["email_domain"])
             if problems:
@@ -397,6 +400,14 @@ class App:
         self.store.save_edit(p["key"], p.get("edit"))
         return {"ok": True}
 
+    def api_team_save(self, _):
+        """Save the extra recipients, domain, directory and threshold as team-defaults.json next to the code."""
+        if self.demo:
+            raise ApiError("Not in the demo")
+        path = self.store.save_team(self.store.config())
+        log.info("saved team defaults", extra={"path": str(path)})
+        return {"path": str(path)}
+
 
 def _open_quietly(paths):
     try:
@@ -518,7 +529,8 @@ def main():
     h.setFormatter(JsonFormatter())
     logging.basicConfig(level=logging.INFO, handlers=[h])
 
-    Handler.nudge = App(Store(data_dir), a.demo, a.port)
+    store_ = Store(data_dir, team_file=None) if a.demo else Store(data_dir)  # the demo never sees real people
+    Handler.nudge = App(store_, a.demo, a.port)
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     except OSError:

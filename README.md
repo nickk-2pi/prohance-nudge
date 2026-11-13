@@ -57,14 +57,24 @@ python -m unittest discover -s tests
 **Start automatically (optional):** `powershell -ExecutionPolicy Bypass -File install-autostart.ps1` starts
 Nudge silently when you sign in to Windows and adds a **Nudge** desktop shortcut. Undo with `-Remove`.
 
+## Team defaults (`team-defaults.json`)
+
+**Settings → Save as team defaults** writes the extra recipients, company domain, email directory and
+threshold to `team-defaults.json` in the Nudge folder. Give that file to a colleague (Teams, email); they put
+it in their Nudge folder and restart Nudge, and those settings become their starting point. Their own changes
+win; directory entries are merged (their address wins for the same name), so an updated file adds new people
+without undoing anyone's edits. The file holds names and email addresses, so it's gitignored: share it
+privately, never commit it to a public repo. The demo ignores it.
+
 ## Email addresses
 
 The tracker's addresses can't be trusted as they are (many say `@pcsglobaltech.com`, and usernames don't
 always match the name). Two settings fix that:
 
-- **Email directory:** one person per line, name then address, e.g. `Sam Lee    slee`; a bare
-  username gets the company domain. Its addresses replace the tracker's, matched by name (word order and case
-  don't matter). Settings lists anyone in the tracker the directory doesn't cover.
+- **Email directory:** a table in Settings with everyone in the tracker: the address the tracker has, and the
+  **Email to use**. A bare username (e.g. `slee`) gets the company domain; empty means the tracker's address.
+  Matched by name (word order and case don't matter). **Paste a list** fills it from lines like
+  `Sam Lee    slee`; **Add person** adds someone who isn't in this month's tracker yet.
 - **Company email domain:** anyone not in the directory whose address is on another domain is flagged, with a
   one-click fix (same username, company domain). Check that fix: usernames sometimes differ.
 

@@ -14,6 +14,7 @@ DEFAULT_TEMPLATES = {
             "ProHance recorded {productive_words} of productive time for you on {date}. "
             "The daily minimum is {threshold_words}.\n\n"
             "{stats}\n\n"
+            "{details}\n\n"
             "{apps}\n\n"
             "If something affected your tracked time, such as system or VPN issues or ProHance not recording "
             "correctly, please reply with a short note so we can update the record.\n\n"
@@ -56,6 +57,12 @@ LEGACY_TEMPLATES = {
          "problems, meetings away from your laptop, or ProHance not tracking correctly, please reply with a short "
          "note so we can record it.\n\nOtherwise, please make sure you reach at least {threshold} of productive "
          "time each day.\n\nThanks,\n{sender_name}"),
+        ("Productive time below {threshold_words} on {date_short}",
+         "Hi {first_name},\n\nProHance recorded {productive_words} of productive time for you on {date}. The daily "
+         "minimum is {threshold_words}.\n\n{stats}\n\n{apps}\n\nIf something affected your tracked time, such as "
+         "system or VPN issues or ProHance not recording correctly, please reply with a short note so we can update "
+         "the record.\n\nPlease make sure you reach at least {threshold_words} of productive time each working "
+         "day.\n\nThanks,\n{sender_name}"),
     ],
     "none": [
         ("No ProHance activity recorded for you on {date_short}",
@@ -84,14 +91,38 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _read_json(path):
+    try:
+        data = json.loads(Path(path).read_text("utf-8-sig"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def _write_atomic(path, data):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_bytes(data)
     os.replace(tmp, path)
 
 
+# Shared starting settings for everyone on the team (extra recipients, company domain, email directory, threshold).
+# Kept next to the code but out of Git: it holds people's names and addresses. Pass it around like any other file.
+TEAM_FILE = Path(__file__).resolve().parent / "team-defaults.json"
+TEAM_KEYS = ("cc_list", "email_domain", "directory", "threshold_min")
+
+
+def _merge_directory(team, own):
+    """Team entries first, then the person's own; the person's own address wins for the same name."""
+    def key(e):
+        return " ".join(str(e.get("name", "")).lower().split())
+    out = {key(e): e for e in team or [] if key(e) and e.get("email")}
+    out.update({key(e): e for e in own or [] if key(e) and e.get("email")})
+    return sorted(out.values(), key=lambda e: e["name"].lower())
+
+
 class Store:
-    def __init__(self, root):
+    def __init__(self, root, team_file=TEAM_FILE):
+        self.team_file = Path(team_file) if team_file else None
         self.root = Path(root)
         (self.root / "cache").mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
@@ -99,14 +130,16 @@ class Store:
 
     # ---- settings
     def config(self):
-        p = self.root / "config.json"
         cfg = json.loads(json.dumps(DEFAULT_CONFIG))
-        if p.exists():
-            try:
-                saved = json.loads(p.read_text("utf-8"))
-            except ValueError:
-                saved = {}  # a damaged settings file must not stop the app; defaults apply
-            cfg.update({k: v for k, v in saved.items() if k in DEFAULT_CONFIG})
+        saved = _read_json(self.root / "config.json")  # damaged or missing: defaults apply
+        cfg.update({k: v for k, v in saved.items() if k in DEFAULT_CONFIG})
+        # team defaults fill what this person hasn't set; their own directory entries win over the team's
+        team = self.team()
+        for k in ("cc_list", "email_domain", "threshold_min"):
+            if team.get(k) and (k not in saved or not saved[k]):
+                cfg[k] = json.loads(json.dumps(team[k]))
+        if team.get("directory"):
+            cfg["directory"] = _merge_directory(team["directory"], cfg.get("directory"))
         for kind, tpl in DEFAULT_TEMPLATES.items():
             cfg["templates"].setdefault(kind, dict(tpl))
             saved = cfg["templates"][kind]
@@ -123,6 +156,18 @@ class Store:
     def save_config(self, cfg):
         with self.lock:
             _write_atomic(self.root / "config.json", json.dumps(cfg, indent=2).encode())
+
+    def team(self):
+        """team-defaults.json, limited to the shareable keys; {} when there is none or it can't be read."""
+        t = _read_json(self.team_file) if self.team_file else {}
+        return {k: t[k] for k in TEAM_KEYS if k in t}
+
+    def save_team(self, cfg):
+        """Write this person's shareable settings as the team defaults file."""
+        data = {"_note": "Nudge team defaults. Holds names and email addresses: share privately, never commit "
+                         "to a public repo.", **{k: cfg[k] for k in TEAM_KEYS}}
+        _write_atomic(self.team_file, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+        return self.team_file
 
     # ---- ledger: drafted / sent / skipped / discarded / cleared. Append-only; the last line per key wins.
     def _load_ledger(self):

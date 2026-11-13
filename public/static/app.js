@@ -10,7 +10,7 @@ const parseHM = (s) => {
 };
 const EMAIL_RE = /^[A-Za-z0-9._%+'\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$/;
 const splitEmails = (s) => String(s || "").split(/[,;]/).map((x) => x.trim()).filter(Boolean);
-const IRREGULAR = { person: "people" };
+const IRREGULAR = { person: "people", address: "addresses" };
 const plural = (n, w) => `${n} ${n === 1 ? w : IRREGULAR[w] || w + "s"}`;
 const GRAPH_EXPLORER = "https://developer.microsoft.com/en-us/graph/graph-explorer";
 const store = {
@@ -41,6 +41,7 @@ const ICONS = {
   sync: '<path d="M21 2v6h-6M3 22v-6h6"/><path d="M3.5 9a9 9 0 0 1 15-3.4L21 8M3 16l2.5 2.4A9 9 0 0 0 20.5 15"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
 
@@ -175,7 +176,7 @@ function vars(c, d) {
   };
 }
 const VAR_NAMES = ["first_name", "name", "date", "date_short", "productive_words", "threshold_words", "shortfall_words", "productive", "threshold", "shortfall", "logged", "idle", "top_apps", "stats", "apps", "sender_name"];
-const BLOCKS = ["stats", "apps"];
+const BLOCKS = ["stats", "apps", "details"];
 const fill = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (BLOCKS.includes(k) ? m : k in v ? v[k] : m));
 function baseDraft(c, d, tpl) {
   tpl ||= S.st.settings.templates[kindOf(c)];
@@ -191,6 +192,25 @@ const toValid = (dr) => { const t = splitEmails(dr.to); return t.length > 0 && t
 // the candidate's address: the email directory's (Settings) first, then a fix chosen for a typo in the sheet's
 // address (saved with the person's edits), then the sheet's
 const ownEmail = (c) => (c.email_source === "directory" ? c.email : S.edits[c.key]?.email || c.email);
+// names match like the server's: case, punctuation, extra spaces and word order don't matter
+const nameWords = (s) => String(s || "").toLowerCase().replace(/[^a-z]+/g, " ").trim().split(/\s+/).filter(Boolean).sort().join(" ");
+const sameName = (a, b) => !!nameWords(a) && nameWords(a) === nameWords(b);
+// rows for the Settings directory table: everyone in the tracker (A-Z) with any address set for them, then
+// directory entries for people not in this tracker
+function directoryRows(directory) {
+  const people = new Map();
+  for (const d of S.wb?.days || []) for (const c of d.candidates) {
+    const k = nameWords(c.name);
+    if (k && !people.has(k)) people.set(k, { name: c.name, sheet: c.sheet_email || c.email || "", email: "", inTracker: true });
+  }
+  const extra = [];
+  for (const e of directory) {
+    const row = people.get(nameWords(e.name));
+    if (row) row.email = e.email; else extra.push({ name: e.name, email: e.email, sheet: "", inTracker: false });
+  }
+  const az = (a, b) => a.name.localeCompare(b.name);
+  return [...[...people.values()].sort(az), ...extra.sort(az)];
+}
 // everyone in the tracker the directory doesn't list
 function notInDirectory() {
   const names = new Map();
@@ -224,12 +244,29 @@ function appsHtml(c) {
     apps.map(([a, m]) => `<tr><td style="padding:3px 18px 3px 0;color:#1f2328">${esc(a)}</td><td style="padding:3px 0;color:#4b505b;font-variant-numeric:tabular-nums">${hm(m)}</td></tr>`).join("") +
     `</table></div>`;
 }
+// {details}: the person's whole tracker row for the day, for anyone who logged time. Blank and zero values are
+// left out; sheet headers are tidied for reading ("T. Logged hours" -> "Logged hours").
+const ZERO = /^0+(:00)?(:00)?$/;
+const tidyLabel = (h) => String(h).replace(/^T\s*\.\s*/i, "").replace(/\s+/g, " ").replace(/\baway system\b/i, "away from system").trim();
+function detailRows(c) {
+  if (!(c.logged > 0)) return [];
+  return (c.record || []).filter(([, v]) => String(v).trim() && !ZERO.test(String(v).trim())).map(([h, v]) => [tidyLabel(h), String(v).trim()]);
+}
+function detailsHtml(c) {
+  const rows = detailRows(c);
+  if (!rows.length) return "";
+  return `<div style="margin:2px 0 14px"><div style="font-size:12px;color:#6b7280;margin-bottom:6px">Your ProHance record for the day</div>` +
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;border:1px solid #e3e5e8">` +
+    rows.map(([h, v], i) => `<tr style="${i % 2 ? "" : "background:#f6f8fa"}"><td style="padding:5px 14px;color:#4b505b;white-space:nowrap;vertical-align:top;border-bottom:1px solid #eef0f2">${esc(h)}</td>` +
+      `<td style="padding:5px 14px;color:#1f2328;vertical-align:top;border-bottom:1px solid #eef0f2">${esc(v)}</td></tr>`).join("") +
+    `</table></div>`;
+}
 function toHtml(body, c) {
   const para = (p) => `<p style="margin:0 0 12px">${esc(p.trim()).replace(/\n/g, "<br>")}</p>`;
-  const blocks = { stats: statsHtml(c), apps: appsHtml(c) };
+  const blocks = { stats: statsHtml(c), apps: appsHtml(c), details: detailsHtml(c) };
   const parts = body.replace(/\r/g, "").split(/\n{2,}/).flatMap((p) =>
-    p.split(/(\{stats\}|\{apps\})/).map((chunk) => {
-      const b = chunk.match(/^\{(stats|apps)\}$/);
+    p.split(/(\{stats\}|\{apps\}|\{details\})/).map((chunk) => {
+      const b = chunk.match(/^\{(stats|apps|details)\}$/);
       return b ? blocks[b[1]] : chunk.trim() ? para(chunk) : "";
     }));
   return `<div style="font-family:'Segoe UI',Arial,sans-serif;font-size:14px;line-height:1.55;color:#1f2328">${parts.join("")}</div>`;
@@ -237,7 +274,8 @@ function toHtml(body, c) {
 function toText(body, c) {
   const stats = [`Productive: ${hm(c.productive)}`, `Expected: ${hm(thr())}`, c.logged != null && `Logged in: ${hm(c.logged)}`, c.idle != null && `Idle: ${hm(c.idle)}`].filter(Boolean).join("  |  ");
   const apps = (c.apps || []).length ? "Top apps: " + topApps(c, 5) : "";
-  return body.split("{stats}").join(stats).split("{apps}").join(apps).replace(/\n{3,}/g, "\n\n");
+  const details = detailRows(c).map(([h, v]) => `${h}: ${v}`).join("\n");
+  return body.split("{stats}").join(stats).split("{apps}").join(apps).split("{details}").join(details).replace(/\n{3,}/g, "\n\n");
 }
 const mailPreview = (dr, c) => `<div class="subj">${esc(dr.subject)}</div>${toHtml(dr.body, c)}`;
 
@@ -505,8 +543,8 @@ function renderPanel(force = false) {
         <span class="r">${dr.edited ? `<span class="pill accent">Edited</span><button class="btn sm ghost" data-act="reset-edit" data-key="${esc(c.key)}" title="Back to the template">${ic("undo")}Reset</button>` : `<span class="muted" style="font-size:12px">${kindOf(c) === "none" ? "“No activity” template" : "“Under threshold” template"}</span>`}</span></div>
       ${S.tab === "preview" ? `<div class="mail" id="pv">${mailPreview(dr, c)}</div>`
         : `<textarea class="textarea body-ta" data-f="body" spellcheck="true">${esc(dr.body)}</textarea>
-           <div class="vars">${["first_name", "productive_words", "threshold_words", "date", "top_apps", "stats", "apps"].map((v) => `<button data-act="ins" data-v="${v}">{${v}}</button>`).join("")}</div>
-           <div class="muted" style="font-size:12px">A line with just <code class="code">{stats}</code> becomes the hours table, and <code class="code">{apps}</code> the top-apps list.</div>`}
+           <div class="vars">${["first_name", "productive_words", "threshold_words", "date", "top_apps", "stats", "details", "apps"].map((v) => `<button data-act="ins" data-v="${v}">{${v}}</button>`).join("")}</div>
+           <div class="muted" style="font-size:12px">A line with just <code class="code">{stats}</code> becomes the hours table, <code class="code">{details}</code> the person's whole tracker row, and <code class="code">{apps}</code> the top-apps list.</div>`}
       ${details}`;
     const ok = toValid(dr);
     const note = !ok ? '<span style="color:var(--danger)">Fix the To address</span>' : canDraft() ? "Opens as a new message in Outlook; you press Send" : "Needs classic Outlook on this PC";
@@ -711,7 +749,7 @@ function confirmDrafts(items, { again = false } = {}) {
   // the email must be complete before it reaches Outlook: a sign-off name, and no unfilled {fields}
   const usesName = items.some(({ c }) => /\{sender_name\}/.test(S.st.settings.templates[kindOf(c)].body) && !S.edits[c.key]?.body);
   if (usesName && !senderName()) { toast("Add your name for the sign-off first (Settings).", "err"); openSettings(); return; }
-  const unfilled = items.map(({ c }) => { const dr = draftFor(c); return [c, (dr.subject + " " + dr.body).match(/\{(?!stats\}|apps\})[a-z_]{2,30}\}/g)]; }).filter(([, m]) => m);
+  const unfilled = items.map(({ c }) => { const dr = draftFor(c); return [c, (dr.subject + " " + dr.body).match(/\{(?!stats\}|apps\}|details\})[a-z_]{2,30}\}/g)]; }).filter(([, m]) => m);
   if (unfilled.length) { toast(`${unfilled[0][0].name}'s email has an unfilled field ${unfilled[0][1][0]}. Fix the template or that email.`, "err"); return; }
   const ccOptions = S.st.settings.cc_list || [];
   const ownCc = items.filter(({ c }) => S.edits[c.key] && ("cc" in S.edits[c.key] || "to" in S.edits[c.key]));
@@ -852,7 +890,7 @@ function openTemplates() {
           <div class="field"><label>Subject</label><input class="input" id="tpl-subject"></div>
           <div class="field"><label>Body</label><textarea class="textarea" id="tpl-body" style="min-height:330px"></textarea></div>
           <div class="field"><label>Insert a field</label><div class="vars">${VAR_NAMES.map((v) => `<button data-v="${v}">{${v}}</button>`).join("")}</div>
-            <span class="hint"><code class="code">{stats}</code> and <code class="code">{apps}</code> on their own line become the hours table and the top-apps list (left out when there's no app usage). Edits you made to one person's email are kept.</span></div>
+            <span class="hint"><code class="code">{stats}</code>, <code class="code">{details}</code> and <code class="code">{apps}</code> on their own line become the hours table, the person's whole tracker row (blank and 0:00 values left out; only when they logged time) and the top-apps list (left out when there's no app usage). Edits you made to one person's email are kept.</span></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px"><div class="section-t" id="tpl-who"></div><div class="mail" id="tpl-pv"></div></div>
       </div>`,
@@ -896,16 +934,22 @@ function openSettings() {
       <div class="field"><label>Extra recipients</label>
         <div class="cclist" id="s-cc"></div>
         <div class="row-form"><input class="input" id="s-cc-new" placeholder="name@company.com" spellcheck="false" autocomplete="off">
-          <select class="input" id="s-cc-field" style="width:auto"><option value="cc">Cc</option><option value="to">To</option></select>
+          <select class="input" id="s-cc-field" style="width:auto;flex:0 0 auto"><option value="cc">Cc</option><option value="to">To</option></select>
           <button class="btn" id="s-cc-add">Add</button></div>
         <span class="hint">Added to every email: <b>To</b> goes next to the candidate's address, <b>Cc</b> in Cc. “On by default” ones are pre-ticked when you open emails; you can untick them per batch, or change one person's email.</span></div>
       <div class="field"><label>Company email domain</label><input class="input" id="s-domain" value="${esc(s.email_domain || "")}" placeholder="e.g. ccsglobaltech.com" spellcheck="false">
         <span class="hint">Addresses in the tracker on any other domain are flagged, with a one-click fix to this one.</span></div>
       <div class="field"><label>Email directory</label>
-        <textarea class="input" id="s-dir" rows="6" spellcheck="false" placeholder="Sam Lee    slee@company.com&#10;Ana Ruiz    aruiz" style="font-family:var(--mono,monospace);font-size:12.5px">${esc((s.directory || []).map((e) => `${e.name}\t${e.email}`).join("\n"))}</textarea>
-        <span class="hint">One person per line: name, then address. A username alone gets the company domain. These addresses replace the tracker's, matched by name.${S.wb && (s.directory || []).length ? ` ${notInDirectory().length ? `Not listed: ${esc(notInDirectory().join(", "))}.` : "Everyone in the tracker is listed."}` : ""}</span></div>
+        <div class="dirtools"><span class="muted grow" id="s-dir-sum" style="font-size:12.5px"></span>
+          <button class="btn sm" id="s-dir-add">${ic("plus")}Add person</button><button class="btn sm" id="s-dir-paste-btn">Paste a list</button></div>
+        <div id="s-dir-paste" style="display:none;margin-bottom:8px"><textarea class="input" id="s-dir-text" rows="4" spellcheck="false" placeholder="One per line: name, then address or username&#10;Sam Lee    slee@company.com&#10;Ana Ruiz    aruiz" style="font-family:var(--mono);font-size:12.5px"></textarea>
+          <div style="display:flex;gap:8px;margin-top:6px"><button class="btn sm" id="s-dir-paste-go">Add to the table</button><span class="muted" style="font-size:12px;align-self:center">Same name again replaces the address.</span></div></div>
+        <div class="dirwrap"><table class="dirtab"><thead><tr><th>Name</th><th>In the tracker</th><th>Email to use</th><th></th></tr></thead><tbody id="s-dir"></tbody></table></div>
+        <span class="hint">“Email to use” replaces the tracker's address, matched by name. A username alone (e.g. <code class="code">slee</code>) gets the company domain. Leave it empty to use the tracker's address.</span></div>
       <div class="form-err" id="s-err"></div>`,
-    foot: `<span class="grow"></span><button class="btn" data-act="close-modal">Cancel</button><button class="btn primary" id="s-save">Save</button>`,
+    wide: true,
+    foot: `${S.st.demo ? "" : `<button class="btn" id="s-team" title="Write the extra recipients, domain, directory and threshold to team-defaults.json, to share with the team">Save as team defaults</button>`}
+      <span class="grow"></span><button class="btn" data-act="close-modal">Cancel</button><button class="btn primary" id="s-save">Save</button>`,
     onEnter: () => { if (document.activeElement?.id === "s-cc-new") $("#s-cc-add").click(); else $("#s-save").click(); },
     mount: () => {
       const ccList = JSON.parse(JSON.stringify(s.cc_list || []));
@@ -930,34 +974,92 @@ function openSettings() {
         $("#s-cc-new").value = ""; drawCc(); $("#s-cc-new").focus();
       };
       openSettings.ccList = ccList;
+
+      // ---- email directory table: everyone in the tracker, plus anyone added by hand
+      const dir = directoryRows(s.directory || []);
+      const domainNow = () => $("#s-domain").value.trim().replace(/^@/, "").toLowerCase();
+      const drawDir = () => {
+        const dom = domainNow();
+        $("#s-dir").innerHTML = dir.map((r, i) => {
+          const off = r.sheet && dom && !r.sheet.toLowerCase().endsWith("@" + dom);
+          return `<tr><td class="who">${r.inTracker ? esc(r.name) : `<input class="input dir-name" data-i="${i}" value="${esc(r.name)}" placeholder="Name as in the tracker">`}</td>
+            <td class="sheet ${off ? "off" : ""}">${r.inTracker ? esc(r.sheet || "(none)") : '<span class="muted">not in this tracker</span>'}</td>
+            <td><input class="input dir-email" data-i="${i}" value="${esc(r.email)}" placeholder="${esc(r.sheet || "address or username")}" spellcheck="false" autocomplete="off"></td>
+            <td class="x">${r.inTracker ? "" : `<button class="btn icon ghost sm dir-del" data-i="${i}" title="Remove">${ic("x")}</button>`}</td></tr>`;
+        }).join("") || `<tr><td colspan="4" class="muted" style="padding:10px">Load the tracker to list everyone, or add people by hand.</td></tr>`;
+        const set = dir.filter((r) => r.email.trim()).length, open = dir.filter((r) => r.inTracker && !r.email.trim()).length;
+        $("#s-dir-sum").textContent = dir.length ? `${set} of ${dir.length} have an address set${open ? `; ${open} in the tracker still use${open === 1 ? "s" : ""} the tracker's address` : ""}.` : "";
+        $("#s-dir").querySelectorAll(".dir-email").forEach((x) => (x.oninput = () => { dir[+x.dataset.i].email = x.value; x.classList.remove("bad"); }));
+        $("#s-dir").querySelectorAll(".dir-name").forEach((x) => (x.oninput = () => { dir[+x.dataset.i].name = x.value; }));
+        $("#s-dir").querySelectorAll(".dir-del").forEach((b) => (b.onclick = () => { dir.splice(+b.dataset.i, 1); drawDir(); }));
+      };
+      drawDir();
+      $("#s-domain").addEventListener("change", drawDir);
+      $("#s-dir-add").onclick = () => {
+        dir.push({ name: "", email: "", sheet: "", inTracker: false }); drawDir();
+        const last = [...document.querySelectorAll("#s-dir .dir-name")].pop();
+        last?.scrollIntoView({ block: "nearest" }); last?.focus();
+      };
+      $("#s-dir-paste-btn").onclick = () => { const p = $("#s-dir-paste"); p.style.display = p.style.display === "none" ? "" : "none"; $("#s-dir-text").focus(); };
+      $("#s-dir-paste-go").onclick = () => {
+        let added = 0;
+        for (const line of $("#s-dir-text").value.split(/\r?\n/)) {
+          const m = line.trim().match(/^(.+?)\s+(\S+)$/);
+          if (!m) continue;
+          const row = dir.find((r) => sameName(r.name, m[1]));
+          if (row) row.email = m[2]; else dir.push({ name: m[1].trim(), email: m[2], sheet: "", inTracker: false });
+          added++;
+        }
+        $("#s-dir-text").value = ""; $("#s-dir-paste").style.display = "none"; drawDir();
+        toast(added ? `Added ${plural(added, "address")} to the table. Save to keep them.` : "Nothing to add: each line needs a name and an address", added ? "ok" : "err");
+      };
+      openSettings.dirCheck = () => {
+        const dom = domainNow();
+        for (const [i, r] of dir.entries()) {
+          const v = r.email.trim();
+          if (!v) continue;
+          const bad = !r.name.trim() ? "needs a name" : v.includes("@") ? (!EMAIL_RE.test(v) && "isn't a valid address")
+            : !/^[A-Za-z0-9._%+'-]+$/.test(v) ? "isn't a valid username" : !dom && "is a username: set the company email domain first";
+          if (bad) {
+            const el = $(`#s-dir .dir-email[data-i="${i}"]`);
+            el?.classList.add("bad"); el?.scrollIntoView({ block: "nearest" }); el?.focus();
+            throw new Error(`${r.name.trim() || "A new row"}: “${v}” ${bad}`);
+          }
+        }
+        return dir.filter((r) => r.email.trim() && r.name.trim()).map((r) => ({ name: r.name.trim(), email: r.email.trim() }));
+      };
       $("#s-unlink")?.addEventListener("click", async () => {
         try { applyState(await api("settings", { link: "" })); closeModal(); if (S.st.source !== "local") S.wb = null; renderAll(); toast("Link removed"); }
         catch (e) { $("#s-err").textContent = e.message; }
       });
-      $("#s-save").onclick = async () => {
-        const btn = $("#s-save"), err = $("#s-err");
+      const save = async (btn, label, thenTeam) => {
+        const err = $("#s-err");
         err.textContent = "";
         try {
           const t = parseHM($("#s-thr").value);
           if (t == null || t <= 0) throw new Error("Threshold must look like 4:00");
-          btn.disabled = true; btn.innerHTML = `<span class="spinner sm"></span>Saving…`;
           const pending = $("#s-cc-new").value.trim();
           if (pending) throw new Error(`Click Add for ${pending}, or clear that box`);
           const body = { threshold_min: t, cc_list: openSettings.ccList, sender_name: $("#s-name").value.trim(),
-            email_domain: $("#s-domain").value.trim(), directory_text: $("#s-dir").value };
+            email_domain: $("#s-domain").value.trim(), directory: openSettings.dirCheck() };
+          btn.disabled = true; btn.innerHTML = `<span class="spinner sm"></span>Saving…`;
           const link = $("#s-link").value.trim();
           if (!S.st.demo && link && link !== s.link) body.link = link;
           const r = await api("settings", body);
           applyState(r);
           if (body.link && !r.workbook) S.wb = null;
+          const team = thenTeam ? await api("team_save", {}) : null;
           closeModal(); renderAll();
           const missing = S.wb && S.st.settings.directory?.length ? notInDirectory() : [];
-          toast(missing.length ? `Settings saved. Not in the email directory: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? ` and ${missing.length - 4} more` : ""}` : "Settings saved");
+          toast(team ? `Saved, and written to ${team.path}. Send that file to a colleague; they put it in their Nudge folder and restart Nudge.`
+            : missing.length ? `Settings saved. Still using the tracker's address: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? ` and ${missing.length - 4} more` : ""}` : "Settings saved", "ok");
         } catch (e) {
           err.textContent = e.message;
-          btn.disabled = false; btn.textContent = "Save";
+          btn.disabled = false; btn.textContent = label;
         }
       };
+      $("#s-save").onclick = () => save($("#s-save"), "Save", false);
+      $("#s-team")?.addEventListener("click", () => save($("#s-team"), "Save as team defaults", true));
     },
   });
 }

@@ -217,6 +217,10 @@ def parse_sheet(rows, tab_day=None):
                                      "msg": f"Date column says {d:%d %b %Y}, but the tab is {tab_day:%d %b %Y}"})
         extra = [[headers[j], _display(headers[j], v)] for j, v in enumerate(row)
                  if j not in keyed and j < len(headers) and headers[j] and v not in (None, "")]
+        # every filled-in column in sheet order, as shown in the sheet, minus who/when (already in the email)
+        who_cols = {cols.get(f) for f in ("name", "email", "date", "emp_id")}
+        record = [[headers[j], _display(headers[j], v)] for j, v in enumerate(row)
+                  if j not in who_cols and j < len(headers) and headers[j] and _text(v)]
         out.append({
             "row": r,
             "name": name or email.split("@")[0],
@@ -230,6 +234,7 @@ def parse_sheet(rows, tab_day=None):
             "manager": _text(get("manager")),
             "emp_id": _text(get("emp_id")),
             "extra": extra,
+            "record": record,
             "apps": [],
             "usage": None,
         })
