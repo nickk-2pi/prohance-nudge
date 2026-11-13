@@ -217,10 +217,17 @@ def parse_sheet(rows, tab_day=None):
                                      "msg": f"Date column says {d:%d %b %Y}, but the tab is {tab_day:%d %b %Y}"})
         extra = [[headers[j], _display(headers[j], v)] for j, v in enumerate(row)
                  if j not in keyed and j < len(headers) and headers[j] and v not in (None, "")]
-        # every filled-in column in sheet order, as shown in the sheet, minus who/when (already in the email)
-        who_cols = {cols.get(f) for f in ("name", "email", "date", "emp_id")}
-        record = [[headers[j], _display(headers[j], v)] for j, v in enumerate(row)
-                  if j not in who_cols and j < len(headers) and headers[j] and _text(v)]
+        # every column of the row in sheet order, as shown in the sheet; blank cells stay in (as ""). The Email
+        # column is left out: the tracker's address is often wrong and the email goes to the right one anyway.
+        record = []
+        for j, h in enumerate(headers):
+            if not h or j == cols.get("email"):
+                continue
+            v = row[j] if j < len(row) else None
+            if j == cols.get("date") and cell_date(v):
+                record.append([h, f"{cell_date(v):%a %d %b %Y}"])
+            else:
+                record.append([h, _display(h, v)])
         out.append({
             "row": r,
             "name": name or email.split("@")[0],

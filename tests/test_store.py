@@ -80,15 +80,19 @@ class TeamDefaults(unittest.TestCase):
 
 
 class Templates(unittest.TestCase):
-    def test_an_unedited_older_default_upgrades_to_the_one_with_details(self):
-        old_low = store.LEGACY_TEMPLATES["low"][-1]
-        st = make(team=None, own={"templates": {"low": {"subject": old_low[0], "body": old_low[1]}}})
-        self.assertIn("{details}", st.config()["templates"]["low"]["body"])
+    def test_every_unedited_older_default_upgrades_to_the_current_one(self):
+        for kind, olds in store.LEGACY_TEMPLATES.items():
+            for subject, body in olds:
+                st = make(team=None, own={"templates": {kind: {"subject": subject, "body": body}}})
+                self.assertEqual(st.config()["templates"][kind], store.DEFAULT_TEMPLATES[kind], subject)
 
-    def test_the_previous_default_is_exactly_the_new_one_without_details(self):
-        new = store.DEFAULT_TEMPLATES["low"]
-        self.assertEqual(store.LEGACY_TEMPLATES["low"][-1],
-                         (new["subject"], new["body"].replace("{details}\n\n", "")))
+    def test_current_defaults_ask_for_a_reply_and_suggest_no_excuses(self):
+        for kind, t in store.DEFAULT_TEMPLATES.items():
+            self.assertIn("{details}", t["body"], kind)
+            self.assertIn("must reply to this email at the earliest", t["body"], kind)
+            for hint in ("VPN", "leave", "not recording", "trouble"):
+                self.assertNotIn(hint, t["body"], (kind, hint))
+            self.assertTrue(t["subject"].startswith("Action required"), kind)
 
     def test_an_edited_template_is_kept(self):
         st = make(team=None, own={"templates": {"low": {"subject": "Hi", "body": "Custom {stats}"}}})

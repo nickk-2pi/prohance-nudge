@@ -147,15 +147,18 @@ def people(**kw):
 
 
 class Record(unittest.TestCase):
-    def test_record_has_every_filled_column_in_sheet_order_but_not_who_or_when(self):
+    def test_record_has_every_column_in_sheet_order_with_blanks_and_zeros(self):
         head = ["User", "Date", "Emp ID", "Email Id", "Late Login Duration", "Late Login Comment",
-                "T. Logged hours", "T.Productive hours", "T.Idle hours", "No. of Break", "Reason", "Status"]
+                "T. Logged hours", "T.Productive hours", "T.Idle hours", "T.Time away  system", "No. of Break",
+                "Reason", "Status"]
         row = ["Ann Lee", 46336, "5560 VM", "alee@x.com", 0.0215277, "Late login in Offline mode.",
-               0.3, 0.1, 0.05, 2, "", None]
+               0.3, 0.1, 0.05, 0, 2, "", None]
         c = wb_from(("10 Nov", [head, row]))["days"][0]["candidates"][0]
-        self.assertEqual(c["record"], [["Late Login Duration", "0:31"], ["Late Login Comment", "Late login in Offline mode."],
+        self.assertEqual(c["record"], [["User", "Ann Lee"], ["Date", "Tue 10 Nov 2026"], ["Emp ID", "5560 VM"],
+                                       ["Late Login Duration", "0:31"], ["Late Login Comment", "Late login in Offline mode."],
                                        ["T. Logged hours", "7:12"], ["T.Productive hours", "2:24"],
-                                       ["T.Idle hours", "1:12"], ["No. of Break", "2"]])
+                                       ["T.Idle hours", "1:12"], ["T.Time away  system", "0:00"], ["No. of Break", "2"],
+                                       ["Reason", ""], ["Status", ""]])  # Email Id left out; blanks kept
 
 
 class Emails(unittest.TestCase):

@@ -8,29 +8,30 @@ from pathlib import Path
 
 DEFAULT_TEMPLATES = {
     "low": {
-        "subject": "Productive time below {threshold_words} on {date_short}",
+        "subject": "Action required: productive time below {threshold_words} on {date_short}",
         "body": (
             "Hi {first_name},\n\n"
             "ProHance recorded {productive_words} of productive time for you on {date}. "
-            "The daily minimum is {threshold_words}.\n\n"
+            "The required minimum is {threshold_words} a day.\n\n"
             "{stats}\n\n"
+            "Below is your complete ProHance record for the day, exactly as it appears in the tracker.\n\n"
             "{details}\n\n"
-            "{apps}\n\n"
-            "If something affected your tracked time, such as system or VPN issues or ProHance not recording "
-            "correctly, please reply with a short note so we can update the record.\n\n"
-            "Please make sure you reach at least {threshold_words} of productive time each working day.\n\n"
-            "Thanks,\n{sender_name}"
+            "You must reply to this email at the earliest, as soon as you see it. In your reply, explain why "
+            "your productive time was below the required minimum and account for the rest of your logged time, "
+            "with supporting evidence.\n\n"
+            "Regards,\n{sender_name}"
         ),
     },
     "none": {
-        "subject": "No ProHance activity recorded on {date_short}",
+        "subject": "Action required: no ProHance activity on {date_short}",
         "body": (
             "Hi {first_name},\n\n"
             "ProHance has no activity recorded for you on {date}.\n\n"
-            "If you were on leave or had trouble signing in to ProHance, please reply with a short note so we "
-            "can update the record. If you were working that day, please make sure the ProHance agent is running "
-            "and signed in at the start of each day.\n\n"
-            "Thanks,\n{sender_name}"
+            "Below is your complete ProHance record for the day, exactly as it appears in the tracker.\n\n"
+            "{details}\n\n"
+            "You must reply to this email at the earliest, as soon as you see it. In your reply, explain why "
+            "no activity was recorded for you on this day, with supporting evidence.\n\n"
+            "Regards,\n{sender_name}"
         ),
     },
 }
@@ -63,12 +64,23 @@ LEGACY_TEMPLATES = {
          "system or VPN issues or ProHance not recording correctly, please reply with a short note so we can update "
          "the record.\n\nPlease make sure you reach at least {threshold_words} of productive time each working "
          "day.\n\nThanks,\n{sender_name}"),
+        ("Productive time below {threshold_words} on {date_short}",
+         "Hi {first_name},\n\nProHance recorded {productive_words} of productive time for you on {date}. The daily "
+         "minimum is {threshold_words}.\n\n{stats}\n\n{details}\n\n{apps}\n\nIf something affected your tracked "
+         "time, such as system or VPN issues or ProHance not recording correctly, please reply with a short note so "
+         "we can update the record.\n\nPlease make sure you reach at least {threshold_words} of productive time "
+         "each working day.\n\nThanks,\n{sender_name}"),
     ],
     "none": [
         ("No ProHance activity recorded for you on {date_short}",
          "Hi {first_name},\n\nProHance shows no activity for you on {date}. If you were on leave or had trouble "
          "logging in, please reply with a short note so we can record it.\n\nIf you did work that day, please "
          "check that the ProHance agent is running and signed in when you start your day.\n\nThanks,\n{sender_name}"),
+        ("No ProHance activity recorded on {date_short}",
+         "Hi {first_name},\n\nProHance has no activity recorded for you on {date}.\n\nIf you were on leave or had "
+         "trouble signing in to ProHance, please reply with a short note so we can update the record. If you were "
+         "working that day, please make sure the ProHance agent is running and signed in at the start of each "
+         "day.\n\nThanks,\n{sender_name}"),
     ],
 }
 

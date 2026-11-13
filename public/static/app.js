@@ -228,7 +228,7 @@ const canSelect = (c) => !["sent", "drafted"].includes(statusOf(c)) && toValid(d
 
 function statsHtml(c) {
   const t = thr();
-  const cells = [["Productive", hm(c.productive), (c.productive ?? 0) < t ? "#b42318" : "#1f2328"], ["Expected", hm(t)]];
+  const cells = [["Productive", hm(c.productive), (c.productive ?? 0) < t ? "#b42318" : "#1f2328"], ["Required", hm(t)]];
   if (c.logged != null) cells.push(["Logged in", hm(c.logged)]);
   if (c.idle != null) cells.push(["Idle", hm(c.idle)]);
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid #e3e5e8;border-radius:8px;margin:2px 0 14px">` +
@@ -244,22 +244,61 @@ function appsHtml(c) {
     apps.map(([a, m]) => `<tr><td style="padding:3px 18px 3px 0;color:#1f2328">${esc(a)}</td><td style="padding:3px 0;color:#4b505b;font-variant-numeric:tabular-nums">${hm(m)}</td></tr>`).join("") +
     `</table></div>`;
 }
-// {details}: the person's whole tracker row for the day, for anyone who logged time. Blank and zero values are
-// left out; sheet headers are tidied for reading ("T. Logged hours" -> "Logged hours").
-const ZERO = /^0+(:00)?(:00)?$/;
+// {details}: everything the tracker holds for the person that day, zeros and blanks included, as sections:
+// the day tab's row (hours; login, logout and breaks; profile; notes) and the App Usage tab (summary and every
+// app). Headers are tidied for reading ("T. Logged hours" -> "Logged hours"); a blank cell reads "Not recorded".
+const NOT_RECORDED = "Not recorded";
 const tidyLabel = (h) => String(h).replace(/^T\s*\.\s*/i, "").replace(/\s+/g, " ").replace(/\baway system\b/i, "away from system").trim();
-function detailRows(c) {
-  if (!(c.logged > 0)) return [];
-  return (c.record || []).filter(([, v]) => String(v).trim() && !ZERO.test(String(v).trim())).map(([h, v]) => [tidyLabel(h), String(v).trim()]);
+function sectionOf(header) {
+  const h = String(header).toLowerCase();
+  if (/comment|reason|response|remark|note/.test(h)) return "notes";
+  if (/late|early|break/.test(h)) return "login";
+  if (/hour|time|idle|logged|productive|away/.test(h)) return "hours";
+  return "profile";
 }
+function detailSections(c) {
+  const s = { hours: [], login: [], profile: [], notes: [] };
+  for (const [h, v] of c.record || []) s[sectionOf(h)].push([tidyLabel(h), String(v ?? "").trim()]);
+  // the part of time on system the tracker puts in neither productive nor non-productive (often "UNKNOWN AOS")
+  const get = (re) => { const r = (c.record || []).find(([h]) => re.test(String(h).toLowerCase())); return r ? parseHM(String(r[1])) : null; };
+  const onSys = get(/time on system/), prod = get(/^t\.?\s*productive|^productive/), nonProd = get(/non\s*productive/);
+  if (onSys != null && prod != null && nonProd != null && onSys - prod - nonProd > 0)
+    s.hours.push(["Time on system not counted as productive or non-productive (calculated)", hm(onSys - prod - nonProd)]);
+  const u = c.usage || {};
+  s.usage = c.usage ? [["Logged hours", hm(u.logged)], ["Time on system", hm(u.on_system)], ["Time away from system", hm(u.away)], ["Idle time", hm(u.idle)]]
+    .map(([k, v]) => [k, v === "—" || v == null ? "" : v]) : [];
+  s.apps = (c.apps || []).map(([a, m]) => [a, hm(m)]);
+  return s;
+}
+const TD = "padding:5px 10px;vertical-align:top;border-bottom:1px solid #eef0f2;font-size:13px;";
+function kvTable(title, rows, note, labelWidth = "48%") {
+  const body = rows.length ? rows.map(([k, v]) => `<tr><td style="${TD}color:#4b505b;width:${labelWidth}">${esc(k)}</td>` +
+      `<td style="${TD}width:${100 - parseFloat(labelWidth)}%;${v ? "color:#1f2328;font-weight:600" : "color:#9aa0a6;font-style:italic"}">${esc(v || NOT_RECORDED)}</td></tr>`).join("")
+    : `<tr><td colspan="2" style="${TD}color:#9aa0a6;font-style:italic">${esc(note || NOT_RECORDED)}</td></tr>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e3e5e8">` +
+    `<tr><td colspan="2" style="padding:7px 10px;background:#f3f4f6;border-bottom:1px solid #e3e5e8;font-size:12px;font-weight:700;color:#1f2328;text-transform:uppercase;letter-spacing:.03em">${esc(title)}</td></tr>${body}</table>`;
+}
+const pairRow = (a, b) => `<tr><td width="50%" style="vertical-align:top;padding:0 6px 12px 0">${a}</td><td width="50%" style="vertical-align:top;padding:0 0 12px 6px">${b}</td></tr>`;
+const wideRow = (a) => `<tr><td colspan="2" style="vertical-align:top;padding:0 0 12px">${a}</td></tr>`;
 function detailsHtml(c) {
-  const rows = detailRows(c);
-  if (!rows.length) return "";
-  return `<div style="margin:2px 0 14px"><div style="font-size:12px;color:#6b7280;margin-bottom:6px">Your ProHance record for the day</div>` +
-    `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;border:1px solid #e3e5e8">` +
-    rows.map(([h, v], i) => `<tr style="${i % 2 ? "" : "background:#f6f8fa"}"><td style="padding:5px 14px;color:#4b505b;white-space:nowrap;vertical-align:top;border-bottom:1px solid #eef0f2">${esc(h)}</td>` +
-      `<td style="padding:5px 14px;color:#1f2328;vertical-align:top;border-bottom:1px solid #eef0f2">${esc(v)}</td></tr>`).join("") +
-    `</table></div>`;
+  const s = detailSections(c);
+  const half = Math.ceil(s.apps.length / 2);
+  const apps = s.apps.length
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${pairRow(kvTable("Applications (App Usage tab)", s.apps.slice(0, half)),
+        s.apps.length > 1 ? kvTable("Applications (continued)", s.apps.slice(half)) : "")}</table>`
+    : kvTable("Applications (App Usage tab)", [], "No application usage recorded for this day");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;margin:2px 0 6px">` +
+    pairRow(kvTable("Hours", s.hours), kvTable("Login, logout and breaks", s.login)) +
+    pairRow(kvTable("Profile", s.profile), kvTable("App Usage tab: time", s.usage, "No App Usage row for this day")) +
+    (s.notes.length ? wideRow(kvTable("Notes and comments", s.notes, "", "24%")) : "") +
+    `<tr><td colspan="2" style="padding:0">${apps}</td></tr></table>`;
+}
+function detailsText(c) {
+  const s = detailSections(c);
+  const block = (t, rows, note) => `${t}\n` + (rows.length ? rows.map(([k, v]) => `  ${k}: ${v || NOT_RECORDED}`).join("\n") : `  ${note || NOT_RECORDED}`);
+  return [block("Hours", s.hours), block("Login, logout and breaks", s.login), block("Profile", s.profile),
+    block("App Usage tab: time", s.usage, "No App Usage row for this day"), s.notes.length && block("Notes and comments", s.notes),
+    block("Applications (App Usage tab)", s.apps, "No application usage recorded for this day")].filter(Boolean).join("\n\n");
 }
 function toHtml(body, c) {
   const para = (p) => `<p style="margin:0 0 12px">${esc(p.trim()).replace(/\n/g, "<br>")}</p>`;
@@ -274,7 +313,7 @@ function toHtml(body, c) {
 function toText(body, c) {
   const stats = [`Productive: ${hm(c.productive)}`, `Expected: ${hm(thr())}`, c.logged != null && `Logged in: ${hm(c.logged)}`, c.idle != null && `Idle: ${hm(c.idle)}`].filter(Boolean).join("  |  ");
   const apps = (c.apps || []).length ? "Top apps: " + topApps(c, 5) : "";
-  const details = detailRows(c).map(([h, v]) => `${h}: ${v}`).join("\n");
+  const details = detailsText(c);
   return body.split("{stats}").join(stats).split("{apps}").join(apps).split("{details}").join(details).replace(/\n{3,}/g, "\n\n");
 }
 const mailPreview = (dr, c) => `<div class="subj">${esc(dr.subject)}</div>${toHtml(dr.body, c)}`;
@@ -544,7 +583,7 @@ function renderPanel(force = false) {
       ${S.tab === "preview" ? `<div class="mail" id="pv">${mailPreview(dr, c)}</div>`
         : `<textarea class="textarea body-ta" data-f="body" spellcheck="true">${esc(dr.body)}</textarea>
            <div class="vars">${["first_name", "productive_words", "threshold_words", "date", "top_apps", "stats", "details", "apps"].map((v) => `<button data-act="ins" data-v="${v}">{${v}}</button>`).join("")}</div>
-           <div class="muted" style="font-size:12px">A line with just <code class="code">{stats}</code> becomes the hours table, <code class="code">{details}</code> the person's whole tracker row, and <code class="code">{apps}</code> the top-apps list.</div>`}
+           <div class="muted" style="font-size:12px">A line with just <code class="code">{stats}</code> becomes the hours table, <code class="code">{details}</code> the person's complete tracker record, and <code class="code">{apps}</code> the top-apps list.</div>`}
       ${details}`;
     const ok = toValid(dr);
     const note = !ok ? '<span style="color:var(--danger)">Fix the To address</span>' : canDraft() ? "Opens as a new message in Outlook; you press Send" : "Needs classic Outlook on this PC";
@@ -890,7 +929,7 @@ function openTemplates() {
           <div class="field"><label>Subject</label><input class="input" id="tpl-subject"></div>
           <div class="field"><label>Body</label><textarea class="textarea" id="tpl-body" style="min-height:330px"></textarea></div>
           <div class="field"><label>Insert a field</label><div class="vars">${VAR_NAMES.map((v) => `<button data-v="${v}">{${v}}</button>`).join("")}</div>
-            <span class="hint"><code class="code">{stats}</code>, <code class="code">{details}</code> and <code class="code">{apps}</code> on their own line become the hours table, the person's whole tracker row (blank and 0:00 values left out; only when they logged time) and the top-apps list (left out when there's no app usage). Edits you made to one person's email are kept.</span></div>
+            <span class="hint"><code class="code">{stats}</code>, <code class="code">{details}</code> and <code class="code">{apps}</code> on their own line become the hours summary, the person's complete tracker record (every column of the day's row plus the App Usage tab, zeros and blanks included) and a short top-apps list. Edits you made to one person's email are kept.</span></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px"><div class="section-t" id="tpl-who"></div><div class="mail" id="tpl-pv"></div></div>
       </div>`,
