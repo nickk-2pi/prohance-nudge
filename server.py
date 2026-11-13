@@ -15,7 +15,6 @@ import hashlib
 import json
 import logging
 import logging.handlers
-import mimetypes
 import random
 import re
 import threading
@@ -392,6 +391,25 @@ def _carry(e):
     return {k: e[k] for k in keep if k in e}
 
 
+# Fixed types, not mimetypes: on Windows it reads the registry, which on many PCs says .js is text/plain,
+# and the browser then refuses to run the app's module script (the page stays on "Loading" forever).
+TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+    ".woff2": "font/woff2",
+}
+
+
+def content_type(name):
+    return TYPES.get(Path(name).suffix.lower(), "application/octet-stream")
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Nudge/2.0"
     nudge = None  # the App
@@ -422,10 +440,7 @@ class Handler(BaseHTTPRequestHandler):
         f = (PUBLIC / rel).resolve()
         if PUBLIC.resolve() not in f.parents or not f.is_file():
             return self._send(404, '{"error":"not found"}')
-        ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
-        if ctype.startswith("text/") or ctype == "application/javascript":
-            ctype += "; charset=utf-8"
-        self._send(200, f.read_bytes(), ctype)
+        self._send(200, f.read_bytes(), content_type(f.name))
 
     def do_POST(self):
         port = self.nudge.port
