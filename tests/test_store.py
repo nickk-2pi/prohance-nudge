@@ -67,8 +67,16 @@ class TeamDefaults(unittest.TestCase):
                                   "email_domain": "example-tech.com", "directory": TEAM["directory"]})
         data = json.loads(Path(st.save_team(st.config())).read_text("utf-8"))
         self.assertEqual(set(data) - {"_note"}, set(store.TEAM_KEYS))
-        self.assertNotIn("sender_name", data)
-        self.assertNotIn("link", data)
+        self.assertNotIn("sender_name", data)  # personal: never shared
+        self.assertEqual(data["link"], "https://example.sharepoint.com/x")  # the tracker link is shared
+
+    def test_the_team_link_is_used_until_a_person_sets_their_own(self):
+        team = {**TEAM, "link": "https://example.sharepoint.com/team"}
+        self.assertEqual(make(team=team).config()["link"], "https://example.sharepoint.com/team")
+        own = make(team=team, own={"link": "https://example.sharepoint.com/mine"}).config()
+        self.assertEqual(own["link"], "https://example.sharepoint.com/mine")
+        removed = make(team=team, own={"link": "", "link_off": True}).config()  # removed it, or uses a copy
+        self.assertEqual(removed["link"], "")
 
 
 class Templates(unittest.TestCase):

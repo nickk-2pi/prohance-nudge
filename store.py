@@ -81,6 +81,7 @@ DEFAULT_CONFIG = {
     "to_also": [],     # derived: extra recipients on by default in To, next to the candidate
     "cc_list": [],     # [{"email": ..., "field": "to" | "cc", "default": true}] managed in Settings
     "sender_name": "",
+    "link_off": False,   # this person removed the link (or uses a downloaded copy): don't bring back the team's
     "email_domain": "",  # e.g. "ccsglobaltech.com": other domains in the sheet are flagged as typos
     "directory": [],     # [{"name", "email"}]: these addresses replace the sheet's (matched by name)
     "templates": DEFAULT_TEMPLATES,
@@ -105,10 +106,10 @@ def _write_atomic(path, data):
     os.replace(tmp, path)
 
 
-# Shared starting settings for everyone on the team (extra recipients, company domain, email directory, threshold).
-# Kept next to the code but out of Git: it holds people's names and addresses. Pass it around like any other file.
+# Shared starting settings for everyone on the team (tracker link, extra recipients, company domain, email
+# directory, threshold). Committed with the code; it holds people's names and addresses, so the repo must be private.
 TEAM_FILE = Path(__file__).resolve().parent / "team-defaults.json"
-TEAM_KEYS = ("cc_list", "email_domain", "directory", "threshold_min")
+TEAM_KEYS = ("link", "cc_list", "email_domain", "directory", "threshold_min")
 
 
 def _merge_directory(team, own):
@@ -135,7 +136,9 @@ class Store:
         cfg.update({k: v for k, v in saved.items() if k in DEFAULT_CONFIG})
         # team defaults fill what this person hasn't set; their own directory entries win over the team's
         team = self.team()
-        for k in ("cc_list", "email_domain", "threshold_min"):
+        for k in ("link", "cc_list", "email_domain", "threshold_min"):
+            if k == "link" and saved.get("link_off"):
+                continue
             if team.get(k) and (k not in saved or not saved[k]):
                 cfg[k] = json.loads(json.dumps(team[k]))
         if team.get("directory"):
@@ -164,8 +167,9 @@ class Store:
 
     def save_team(self, cfg):
         """Write this person's shareable settings as the team defaults file."""
-        data = {"_note": "Nudge team defaults. Holds names and email addresses: share privately, never commit "
-                         "to a public repo.", **{k: cfg[k] for k in TEAM_KEYS}}
+        data = {"_note": "Nudge team defaults: tracker link, extra recipients, company domain, email directory, "
+                         "threshold. Holds names and email addresses: keep this repo private.",
+                **{k: cfg[k] for k in TEAM_KEYS}}
         _write_atomic(self.team_file, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
         return self.team_file
 

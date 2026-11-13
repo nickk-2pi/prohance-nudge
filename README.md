@@ -59,12 +59,14 @@ Nudge silently when you sign in to Windows and adds a **Nudge** desktop shortcut
 
 ## Team defaults (`team-defaults.json`)
 
-**Settings → Save as team defaults** writes the extra recipients, company domain, email directory and
-threshold to `team-defaults.json` in the Nudge folder. Give that file to a colleague (Teams, email); they put
-it in their Nudge folder and restart Nudge, and those settings become their starting point. Their own changes
-win; directory entries are merged (their address wins for the same name), so an updated file adds new people
-without undoing anyone's edits. The file holds names and email addresses, so it's gitignored: share it
-privately, never commit it to a public repo. The demo ignores it.
+`team-defaults.json` is everyone's starting settings: the tracker link, extra recipients, company domain,
+email directory and threshold. It comes with the code, so `git pull` brings the latest. Your own changes in
+Settings win; directory entries are merged (your address wins for the same name), so an updated file adds new
+people without undoing anyone's edits. Removing the link or opening a downloaded copy keeps the team link from
+coming back. Your sign-off name is never shared. The demo ignores the file.
+
+To update it: change Settings, press **Save as team defaults**, then commit and push `team-defaults.json`.
+It holds names and email addresses: **keep this repo private.**
 
 ## Email addresses
 

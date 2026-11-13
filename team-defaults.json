@@ -1,0 +1,86 @@
+{
+  "_note": "Nudge team defaults: tracker link, extra recipients, company domain, email directory, threshold. Holds names and email addresses: keep this repo private.",
+  "link": "https://ccsglobaltech-my.sharepoint.com/:x:/p/dmalik/IQA3mdB0lM4USqRgSqjtaT2iAY9-47nUEJy9ilcs3zeTzCE?e=JwWnTY",
+  "cc_list": [
+    {
+      "email": "PuSingh@ccsglobaltech.com",
+      "field": "to",
+      "default": true
+    },
+    {
+      "email": "shnair@ccsglobaltech.com",
+      "field": "cc",
+      "default": true
+    },
+    {
+      "email": "rirai@ccsglobaltech.com",
+      "field": "cc",
+      "default": true
+    },
+    {
+      "email": "lbhardwaj@ccsglobaltech.com",
+      "field": "cc",
+      "default": true
+    }
+  ],
+  "email_domain": "ccsglobaltech.com",
+  "directory": [
+    {
+      "name": "Aditya Chichghare",
+      "email": "achichghare@ccsglobaltech.com"
+    },
+    {
+      "name": "Aishwarya Sriyapu Reddy",
+      "email": "aireddy@ccsglobaltech.com"
+    },
+    {
+      "name": "Devankshi Deshmukh",
+      "email": "ddeshmukh@ccsglobaltech.com"
+    },
+    {
+      "name": "Durga Venkata Vamsi Akula",
+      "email": "vakula@ccsglobaltech.com"
+    },
+    {
+      "name": "Harshitha Krishna Rao",
+      "email": "harrao@ccsglobaltech.com"
+    },
+    {
+      "name": "Huimin Guo",
+      "email": "mguo@ccsglobaltech.com"
+    },
+    {
+      "name": "Jayant Bhatia",
+      "email": "jbhatia@ccsglobaltech.com"
+    },
+    {
+      "name": "Jikai Zhao",
+      "email": "kzhao@ccsglobaltech.com"
+    },
+    {
+      "name": "Kareena Ramrakhya",
+      "email": "rramrakhya@ccsglobaltech.com"
+    },
+    {
+      "name": "Neha Dudhane",
+      "email": "nedhudhane@ccsglobaltech.com"
+    },
+    {
+      "name": "Omar Khan",
+      "email": "okhan@ccsglobaltech.com"
+    },
+    {
+      "name": "Pathik Viramgama",
+      "email": "patviramgama@ccsglobaltech.com"
+    },
+    {
+      "name": "Prathamesh Varhadpande",
+      "email": "pravindra@ccsglobaltech.com"
+    },
+    {
+      "name": "Vamsi Konda",
+      "email": "vkonda@ccsglobaltech.com"
+    }
+  ],
+  "threshold_min": 240
+}

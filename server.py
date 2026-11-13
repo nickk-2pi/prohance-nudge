@@ -250,7 +250,7 @@ class App:
             link = str(p["link"]).strip()
             if link and not link.startswith("https://"):
                 raise ApiError("Paste the full https:// SharePoint link (Share → Copy link)")
-            cfg.update(link=link, drive_id="", item_id="")
+            cfg.update(link=link, drive_id="", item_id="", link_off=not link)
             if (self.store.cached_meta() or {}).get("fetched_from") not in (None, "local"):
                 self.store.clear_file()  # the old SharePoint file's copy no longer applies
                 self._parsed = None
@@ -287,7 +287,7 @@ class App:
                               "modified": p.get("modified") or now_iso(), "modified_by": "", "web_url": "",
                               "fetched_at": now_iso(), "fetched_from": "local", "size": len(data)}, data)
         cfg = self.store.config()
-        cfg.update(link="", drive_id="", item_id="")  # the downloaded copy replaces the SharePoint source
+        cfg.update(link="", drive_id="", item_id="", link_off=True)  # the downloaded copy replaces SharePoint
         self.store.save_config(cfg)
         self._parsed = None
         log.info("opened local copy", extra={"bytes": len(data), "days": len(parsed["days"])})
