@@ -154,11 +154,11 @@ class Record(unittest.TestCase):
         row = ["Ann Lee", 46336, "5560 VM", "alee@x.com", 0.0215277, "Late login in Offline mode.",
                0.3, 0.1, 0.05, 0, 2, "", None]
         c = wb_from(("10 Nov", [head, row]))["days"][0]["candidates"][0]
-        self.assertEqual(c["record"], [["User", "Ann Lee"], ["Date", "Tue 10 Nov 2026"], ["Emp ID", "5560 VM"],
-                                       ["Late Login Duration", "0:31"], ["Late Login Comment", "Late login in Offline mode."],
+        self.assertEqual(c["record"], [["User", "Ann Lee"], ["Date", "10 Nov 2026"], ["Emp ID", "5560 VM"],
+                                       ["Email Id", "alee@x.com"], ["Late Login Duration", "0:31"], ["Late Login Comment", "Late login in Offline mode."],
                                        ["T. Logged hours", "7:12"], ["T.Productive hours", "2:24"],
                                        ["T.Idle hours", "1:12"], ["T.Time away  system", "0:00"], ["No. of Break", "2"],
-                                       ["Reason", ""], ["Status", ""]])  # Email Id left out; blanks kept
+                                       ["Reason", ""], ["Status", ""]])  # every column; blanks kept
 
 
 class Emails(unittest.TestCase):
@@ -219,6 +219,19 @@ class AppUsage(unittest.TestCase):
         self.assertEqual(c["Ben Ode"]["apps"], [])           # no row: no activity, not an error
         self.assertEqual(wb["days"][0]["warnings"], [])
         self.assertIn("App Usage", wb["other_tabs"])
+        # nothing in the App Usage row is lost: every column of that date's block, in order, blanks as ""
+        self.assertEqual(c["Cy Lo"]["usage_record"], [
+            ["User", "Cy Lo"], ["Employee ID", ""], ["Date", "10 Nov 2026"], ["Logged Hours", "9:36"],
+            ["Time On System", "7:12"], ["Time Away From System", ""], ["MS Teams", ""], ["ChatGPT", "2:24"],
+            ["Youtube", ""], ["Idle Time", "1:12"]])
+        self.assertEqual(c["Ana Ruiz"]["usage_record"][1], ["Employee ID", "5560"])
+        self.assertEqual(c["Ben Ode"]["usage_record"], [])
+
+    def test_an_app_recorded_as_zero_is_kept(self):
+        day = ("10 Nov", [HEAD, ["Ana Ruiz", NOV10, 1, "ana@x.com", None, 0.5, 0, 0.1, None]])
+        usage = ("App Usage", [USAGE_HEAD, ["Ana Ruiz", 1, NOV10, 0.5, 0.3, None, 0, 0.1, None, 0.2]])
+        rec = dict(wb_from(day, usage)["days"][0]["candidates"][0]["usage_record"])
+        self.assertEqual((rec["MS Teams"], rec["ChatGPT"], rec["Youtube"]), ("0:00", "2:24", ""))
 
     def test_active_person_without_usage_row_is_noted(self):
         day = ("10 Nov", [HEAD, ["Ana Ruiz", NOV10, 1, "ana@x.com", None, 0.5, 0, 0.1, None],

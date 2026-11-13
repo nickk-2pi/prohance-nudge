@@ -244,64 +244,28 @@ function appsHtml(c) {
     apps.map(([a, m]) => `<tr><td style="padding:3px 18px 3px 0;color:#1f2328">${esc(a)}</td><td style="padding:3px 0;color:#4b505b;font-variant-numeric:tabular-nums">${hm(m)}</td></tr>`).join("") +
     `</table></div>`;
 }
-// {details}: everything the tracker holds for the person that day, zeros and blanks included, as sections:
-// the day tab's row (hours; login, logout and breaks; profile; notes) and the App Usage tab (summary and every
-// app). Headers are tidied for reading ("T. Logged hours" -> "Logged hours"); a blank cell reads "Not recorded".
-const NOT_RECORDED = "Not recorded";
-const tidyLabel = (h) => String(h).replace(/^T\s*\.\s*/i, "").replace(/\s+/g, " ").replace(/\baway system\b/i, "away from system").trim();
-function sectionOf(header) {
-  const h = String(header).toLowerCase();
-  if (/comment|reason|response|remark|note/.test(h)) return "notes";
-  if (/late|early|break/.test(h)) return "login";
-  if (/hour|time|idle|logged|productive|away/.test(h)) return "hours";
-  return "profile";
+// {details}: two plain tables side by side, the person's row in the day tab ("ProHance") and their row in the App
+// Usage tab, every column in sheet order with the sheet's own headers. No grouping, no calculations, no
+// filtering (only Manager1/Manager2 are left out); a blank cell stays blank.
+const SKIP_COLUMN = /^manager\s*\d*$/i; // Manager1, Manager2
+const TD = "padding:4px 8px;vertical-align:top;border:1px solid #e3e5e8;font-size:12.5px;color:#1f2328;";
+function rawTable(title, rows) {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">` +
+    `<tr><td colspan="2" style="${TD}background:#f3f4f6;font-weight:700">${esc(title)}</td></tr>` +
+    (rows.length ? rows.map(([k, v]) => `<tr><td style="${TD}width:50%;color:#4b505b">${esc(k)}</td><td style="${TD}width:50%">${esc(v)}</td></tr>`).join("")
+      : `<tr><td colspan="2" style="${TD}color:#4b505b">No row for this person on this day</td></tr>`) +
+    `</table>`;
 }
-function detailSections(c) {
-  const s = { hours: [], login: [], profile: [], notes: [] };
-  for (const [h, v] of c.record || []) {
-    if (/^manager\s*\d*$/i.test(String(h).trim())) continue; // Manager1, Manager2: not for the email
-    s[sectionOf(h)].push([tidyLabel(h), String(v ?? "").trim()]);
-  }
-  // the part of time on system the tracker puts in neither productive nor non-productive (often "UNKNOWN AOS")
-  const get = (re) => { const r = (c.record || []).find(([h]) => re.test(String(h).toLowerCase())); return r ? parseHM(String(r[1])) : null; };
-  const onSys = get(/time on system/), prod = get(/^t\.?\s*productive|^productive/), nonProd = get(/non\s*productive/);
-  if (onSys != null && prod != null && nonProd != null && onSys - prod - nonProd > 0)
-    s.hours.push(["Time on system not counted as productive or non-productive (calculated)", hm(onSys - prod - nonProd)]);
-  const u = c.usage || {};
-  s.usage = c.usage ? [["Logged hours", hm(u.logged)], ["Time on system", hm(u.on_system)], ["Time away from system", hm(u.away)], ["Idle time", hm(u.idle)]]
-    .map(([k, v]) => [k, v === "—" || v == null ? "" : v]) : [];
-  s.apps = (c.apps || []).map(([a, m]) => [a, hm(m)]);
-  return s;
-}
-const TD = "padding:5px 10px;vertical-align:top;border-bottom:1px solid #eef0f2;font-size:13px;";
-function kvTable(title, rows, note, labelWidth = "48%") {
-  const body = rows.length ? rows.map(([k, v]) => `<tr><td style="${TD}color:#4b505b;width:${labelWidth}">${esc(k)}</td>` +
-      `<td style="${TD}width:${100 - parseFloat(labelWidth)}%;${v ? "color:#1f2328;font-weight:600" : "color:#9aa0a6;font-style:italic"}">${esc(v || NOT_RECORDED)}</td></tr>`).join("")
-    : `<tr><td colspan="2" style="${TD}color:#9aa0a6;font-style:italic">${esc(note || NOT_RECORDED)}</td></tr>`;
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e3e5e8">` +
-    `<tr><td colspan="2" style="padding:7px 10px;background:#f3f4f6;border-bottom:1px solid #e3e5e8;font-size:12px;font-weight:700;color:#1f2328;text-transform:uppercase;letter-spacing:.03em">${esc(title)}</td></tr>${body}</table>`;
-}
-const pairRow = (a, b) => `<tr><td width="50%" style="vertical-align:top;padding:0 6px 12px 0">${a}</td><td width="50%" style="vertical-align:top;padding:0 0 12px 6px">${b}</td></tr>`;
-const wideRow = (a) => `<tr><td colspan="2" style="vertical-align:top;padding:0 0 12px">${a}</td></tr>`;
+const prohanceRows = (c) => (c.record || []).filter(([h]) => !SKIP_COLUMN.test(String(h).trim())).map(([h, v]) => [String(h), String(v ?? "")]);
+const usageRows = (c) => (c.usage_record || []).map(([h, v]) => [String(h), String(v ?? "")]);
 function detailsHtml(c) {
-  const s = detailSections(c);
-  const half = Math.ceil(s.apps.length / 2);
-  const apps = s.apps.length
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${pairRow(kvTable("Applications (App Usage tab)", s.apps.slice(0, half)),
-        s.apps.length > 1 ? kvTable("Applications (continued)", s.apps.slice(half)) : "")}</table>`
-    : kvTable("Applications (App Usage tab)", [], "No application usage recorded for this day");
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;margin:2px 0 6px">` +
-    pairRow(kvTable("Hours", s.hours), kvTable("Login, logout and breaks", s.login)) +
-    pairRow(kvTable("Profile", s.profile), kvTable("App Usage tab: time", s.usage, "No App Usage row for this day")) +
-    (s.notes.length ? wideRow(kvTable("Notes and comments", s.notes, "", "24%")) : "") +
-    `<tr><td colspan="2" style="padding:0">${apps}</td></tr></table>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:760px;margin:2px 0 14px"><tr>` +
+    `<td width="50%" style="vertical-align:top;padding:0 6px 0 0">${rawTable("ProHance", prohanceRows(c))}</td>` +
+    `<td width="50%" style="vertical-align:top;padding:0 0 0 6px">${rawTable("App Usage", usageRows(c))}</td></tr></table>`;
 }
 function detailsText(c) {
-  const s = detailSections(c);
-  const block = (t, rows, note) => `${t}\n` + (rows.length ? rows.map(([k, v]) => `  ${k}: ${v || NOT_RECORDED}`).join("\n") : `  ${note || NOT_RECORDED}`);
-  return [block("Hours", s.hours), block("Login, logout and breaks", s.login), block("Profile", s.profile),
-    block("App Usage tab: time", s.usage, "No App Usage row for this day"), s.notes.length && block("Notes and comments", s.notes),
-    block("Applications (App Usage tab)", s.apps, "No application usage recorded for this day")].filter(Boolean).join("\n\n");
+  const block = (t, rows) => `${t}\n` + (rows.length ? rows.map(([k, v]) => `  ${k}: ${v}`).join("\n") : "  No row for this person on this day");
+  return `${block("ProHance", prohanceRows(c))}\n\n${block("App Usage", usageRows(c))}`;
 }
 function toHtml(body, c) {
   const para = (p) => `<p style="margin:0 0 12px">${esc(p.trim()).replace(/\n/g, "<br>")}</p>`;

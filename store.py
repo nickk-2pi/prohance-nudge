@@ -13,7 +13,6 @@ DEFAULT_TEMPLATES = {
             "Hi {first_name},\n\n"
             "ProHance recorded {productive_words} of productive time for you on {date}. "
             "The required minimum is {threshold_words} a day.\n\n"
-            "{stats}\n\n"
             "Your ProHance record for the day:\n\n"
             "{details}\n\n"
             "You must reply to this email at the earliest, as soon as you see it. In your reply, explain why "
@@ -83,9 +82,11 @@ LEGACY_TEMPLATES = {
          "day.\n\nThanks,\n{sender_name}"),
     ],
 }
-# the first "Action required" wording, which introduced the record differently
+# the earlier "Action required" wordings: with the {stats} summary, first with a longer lead-in to the record
 for _kind, _t in DEFAULT_TEMPLATES.items():
-    LEGACY_TEMPLATES[_kind].append((_t["subject"], _t["body"].replace(
+    _with_stats = _t["body"].replace("a day.\n\nYour ProHance record", "a day.\n\n{stats}\n\nYour ProHance record")
+    LEGACY_TEMPLATES[_kind].append((_t["subject"], _with_stats))
+    LEGACY_TEMPLATES[_kind].append((_t["subject"], _with_stats.replace(
         "Your ProHance record for the day:",
         "Below is your complete ProHance record for the day, exactly as it appears in the tracker.")))
 

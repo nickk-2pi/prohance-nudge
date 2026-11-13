@@ -156,9 +156,11 @@ def _text(v):
 
 
 def _display(header, v):
+    """A cell as the sheet shows it. Times are stored as day fractions, so they become h:mm: any number under
+    a time-like header, and any fraction (e.g. a "Total Break" of 0.0208) unless the column counts something."""
     h = norm(header)
-    if isinstance(v, (int, float)) and not isinstance(v, bool) and DURATION_HEADER.search(h) \
-            and "no of" not in h and "count" not in h:
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and "no of" not in h and "count" not in h \
+            and (DURATION_HEADER.search(h) or not float(v).is_integer()):
         return hm(minutes(v))
     return _text(v)
 
@@ -217,15 +219,14 @@ def parse_sheet(rows, tab_day=None):
                                      "msg": f"Date column says {d:%d %b %Y}, but the tab is {tab_day:%d %b %Y}"})
         extra = [[headers[j], _display(headers[j], v)] for j, v in enumerate(row)
                  if j not in keyed and j < len(headers) and headers[j] and v not in (None, "")]
-        # every column of the row in sheet order, as shown in the sheet; blank cells stay in (as ""). The Email
-        # column is left out: the tracker's address is often wrong and the email goes to the right one anyway.
+        # every column of the row in sheet order, as shown in the sheet; blank cells stay in (as "")
         record = []
         for j, h in enumerate(headers):
-            if not h or j == cols.get("email"):
+            if not h:
                 continue
             v = row[j] if j < len(row) else None
             if j == cols.get("date") and cell_date(v):
-                record.append([h, f"{cell_date(v):%a %d %b %Y}"])
+                record.append([h, f"{cell_date(v):%d %b %Y}"])
             else:
                 record.append([h, _display(h, v)])
         out.append({
@@ -244,6 +245,7 @@ def parse_sheet(rows, tab_day=None):
             "record": record,
             "apps": [],
             "usage": None,
+            "usage_record": [],  # the person's App Usage row for the day: every column, as the sheet shows it
         })
     return out, headers, None, warnings
 
@@ -273,6 +275,7 @@ def parse_app_usage(rows):
                     cols["summary"][j] = USAGE_SUMMARY[h]
                 else:
                     cols["apps"][j] = str(raw).strip()
+            cols["headers"] = [(j, str(raw).strip()) for j, raw in enumerate(row) if _text(raw)]
             continue
         if not any(v not in (None, "") for v in row):
             continue
@@ -295,6 +298,18 @@ def parse_app_usage(rows):
             if m:
                 entry["apps"].append([app, m])
         entry["apps"].sort(key=lambda a: -a[1])
+        # the whole row as the sheet shows it, every column of this block's header in order, blanks as "".
+        # Numbers here are times (Excel day fractions) except Employee ID and Date.
+        entry["record"] = []
+        for j, h in cols["headers"]:
+            v = at(j)
+            if j == cols["date"] and cell_date(v):
+                shown = f"{cell_date(v):%d %b %Y}"
+            elif j != cols["emp"] and isinstance(v, (int, float)) and not isinstance(v, bool):
+                shown = hm(minutes(v))
+            else:
+                shown = _text(v)
+            entry["record"].append([h, shown])
         emp = emp_key(at(cols["emp"])) if cols["emp"] is not None else ""
         if emp:
             usage[(d.isoformat(), "emp:" + emp)] = entry
@@ -448,8 +463,9 @@ def parse_workbook(sheets, today=None, directory=None, domain=""):
             e = usage.get((d["date"], "emp:" + emp_key(c["emp_id"]))) if emp_key(c["emp_id"]) else None
             e = e or usage.get((d["date"], "name:" + norm(c["name"])))
             if e:
-                c["usage"] = {k: v for k, v in e.items() if k != "apps"}
+                c["usage"] = {k: v for k, v in e.items() if k not in ("apps", "record")}
                 c["apps"] = e["apps"]
+                c["usage_record"] = e["record"]
             elif usage_tab and d["date"] in usage_dates and (c["logged"] or 0) > 0:
                 d["warnings"].append({"level": "info", "row": c["row"], "who": c["name"],
                                       "msg": f"No App Usage row, though logged {hm(c['logged'])}"})
