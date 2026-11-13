@@ -66,7 +66,7 @@ class App:
         self.lock = threading.Lock()
         self.inflight = set()
         self._parsed = None
-        self.token = None  # {"token", "user", "name", "expires_at", "can_read", "can_draft", ...}; memory only
+        self.token = None  # {"token", "user", "name", "expires_at", "can_read", ...}; memory only
         if demo_mode:
             self.token = {"token": "demo", "user": "you@example-tech.com", "name": "Demo User", "app": "Demo",
                           "expires_at": int(time.time()) + 86400, "can_read": True, "scopes": []}
@@ -191,7 +191,7 @@ class App:
             info["user"] = me.get("mail") or me.get("userPrincipalName") or info["user"]
         self.token = info
         log.info("token set", extra={"expires_in_min": round((info["expires_at"] - time.time()) / 60),
-                                     "can_read": info["can_read"], "can_draft": info["can_draft"]})
+                                     "can_read": info["can_read"]})
         return {"token": self.token_public()}
 
     def api_token_clear(self, _):

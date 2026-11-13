@@ -1,11 +1,38 @@
+import base64
+import json
 import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import msgraph  # noqa: E402
 import server  # noqa: E402
+from store import Store  # noqa: E402
+
+
+def fake_token(**claims):
+    def part(d):
+        return base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")
+    body = {"aud": sorted(msgraph.GRAPH_AUDIENCES)[0], "exp": int(time.time()) + 3600, "upn": "sam@example.com",
+            "name": "Sam Lee", "scp": "Files.Read.All User.Read", **claims}
+    return f"{part({'alg': 'none'})}.{part(body)}.sig"
+
+
+class Token(unittest.TestCase):
+    def test_pasting_a_token_works(self):
+        app = server.App(Store(tempfile.mkdtemp()), demo_mode=True)  # demo: no call to Microsoft
+        out = app.api_token({"token": fake_token()})["token"]
+        self.assertTrue(out["can_read"])
+        self.assertEqual(out["user"], "sam@example.com")
+        self.assertNotIn("token", out)  # the token itself never goes back to the page
+
+    def test_token_without_file_access_is_accepted_but_flagged(self):
+        app = server.App(Store(tempfile.mkdtemp()), demo_mode=True)
+        self.assertFalse(app.api_token({"token": fake_token(scp="User.Read")})["token"]["can_read"])
 
 
 class ContentTypes(unittest.TestCase):
