@@ -180,7 +180,7 @@ const fill = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (BLOCKS.includes(k) ? m
 function baseDraft(c, d, tpl) {
   tpl ||= S.st.settings.templates[kindOf(c)];
   const v = vars(c, d);
-  return { to: joinAddrs([c.email], S.st.settings.to_also || []), cc: joinAddrs(S.st.settings.cc || []),
+  return { to: joinAddrs([ownEmail(c)], S.st.settings.to_also || []), cc: joinAddrs(S.st.settings.cc || []),
     subject: fill(tpl.subject, v), body: fill(tpl.body, v) };
 }
 function draftFor(c, d = S.byKey[c.key].d) {
@@ -188,6 +188,8 @@ function draftFor(c, d = S.byKey[c.key].d) {
   return { ...baseDraft(c, d), ...(ov || {}), edited: !!ov && Object.keys(ov).length > 0 };
 }
 const toValid = (dr) => { const t = splitEmails(dr.to); return t.length > 0 && t.every((e) => EMAIL_RE.test(e)); };
+// the candidate's address: the tracker's, or the fix chosen for a typo in it (saved with the person's edits)
+const ownEmail = (c) => S.edits[c.key]?.email || c.email;
 // the candidate's flagged address is still in To (the extra To recipients don't matter here)
 const issueOpen = (c, dr) => !!c.email_issue && splitEmails(dr.to).some((e) => e.toLowerCase() === (c.email || "").toLowerCase());
 function joinAddrs(...lists) {
@@ -241,6 +243,18 @@ function saveEditField(key, field, value) {
   if (Object.keys(ov).length) S.edits[key] = ov; else delete S.edits[key];
   clearTimeout(editTimer[key]);
   editTimer[key] = setTimeout(() => api("edit", { key, edit: S.edits[key] || null }).catch((e) => toast(e.message, "err")), 400);
+}
+
+// Replace a mistyped candidate address with the suggested one. Saved as the person's own address, so the
+// extra To/Cc recipients still apply; a To the person's email already sets by hand gets the swap too.
+function useEmail(key, email) {
+  const { c } = S.byKey[key];
+  const ownTo = S.edits[key] && "to" in S.edits[key] ? S.edits[key].to : null;
+  saveEditField(key, "email", email);
+  if (ownTo !== null) {
+    const bad = (c.email || "").toLowerCase();
+    saveEditField(key, "to", joinAddrs(splitEmails(ownTo).map((e) => (e.toLowerCase() === bad ? email : e))));
+  }
 }
 
 // ------------------------------------------------------------------ rendering
@@ -707,7 +721,8 @@ function confirmDrafts(items, { again = false } = {}) {
         : `<div class="muted" style="font-size:12.5px">Only the candidate. Add others under Settings → Extra recipients.</div>`}
       <div class="rcpt">${items.map(({ c }) => { const dr = draftFor(c); return `<div class="r"><div><b>${esc(c.name)}</b><div class="e">${esc(dr.to)}</div></div>
         <span class="num" style="color:var(--danger);font-weight:650">${hm(c.productive)}</span>${pill({ ...c, key: "_" })}</div>`; }).join("")}</div>
-      ${flagged.length ? `<div class="fixmail">${ic("alert")}<span>${flagged.map(({ c }) => `${esc(c.name)}: ${esc(c.email_issue)}`).join("<br>")}</span></div>` : ""}`,
+      ${flagged.map(({ c }) => `<div class="fixmail">${ic("alert")}<span class="grow">${esc(c.name)}: ${esc(c.email_issue)}</span>
+        ${c.email_suggestion ? `<button class="btn sm fix-go" data-key="${esc(c.key)}" data-email="${esc(c.email_suggestion)}">Use ${esc(c.email_suggestion)}</button>` : ""}</div>`).join("")}`,
     foot: `<span class="grow"><kbd>Enter</kbd> to open · <kbd>Esc</kbd> to cancel</span><button class="btn" data-act="close-modal">Cancel</button>
       <button class="btn primary" id="go">${ic("mail")}Open ${items.length} in Outlook</button>`,
     onEnter: () => $("#go")?.click(),
@@ -717,6 +732,11 @@ function confirmDrafts(items, { again = false } = {}) {
         const choice = { to: picked.filter((c) => c.field === "to").map((c) => c.email), cc: picked.filter((c) => c.field !== "to").map((c) => c.email) };
         closeModal(); runDrafts(items, again, choice);
       };
+      document.querySelectorAll(".fix-go").forEach((b) => (b.onclick = () => {
+        useEmail(b.dataset.key, b.dataset.email);
+        renderRows(); renderPanel(true);
+        confirmDrafts(items, { again }); // redraw with the fixed address
+      }));
       $("#go").focus();
     },
   });
@@ -729,7 +749,7 @@ async function runDrafts(items, again = false, choice = null) {
   const payload = items.map(({ c, d }) => {
     const dr = draftFor(c, d);
     const ownTo = S.edits[c.key] && "to" in S.edits[c.key], ownCc = S.edits[c.key] && "cc" in S.edits[c.key];
-    const to = ownTo || !choice ? splitEmails(dr.to) : splitEmails(joinAddrs([c.email], choice.to));
+    const to = ownTo || !choice ? splitEmails(dr.to) : splitEmails(joinAddrs([ownEmail(c)], choice.to));
     const cc = ownCc || !choice ? splitEmails(dr.cc) : choice.cc;
     return { key: c.key, to, cc, subject: dr.subject, html: toHtml(dr.body, c),
       date: d.date, sheet: d.sheet, name: c.name, productive: c.productive, kind: kindOf(c) };
@@ -756,7 +776,7 @@ async function runDrafts(items, again = false, choice = null) {
 async function mark(items, status) {
   const r = await api("mark", {
     status,
-    items: items.map(({ c, d }) => ({ key: c.key, date: d.date, sheet: d.sheet, name: c.name, email: c.email, productive: c.productive })),
+    items: items.map(({ c, d }) => ({ key: c.key, date: d.date, sheet: d.sheet, name: c.name, email: ownEmail(c), productive: c.productive })),
   });
   addLedger(r.entries);
   if (status === "skipped") items.forEach(({ c }) => sel().delete(c.key));
@@ -1075,10 +1095,7 @@ const ACT = {
     renderPanel(true); renderRows();
   },
   "use-email": (t) => {
-    // swap only the candidate's own address; keep the extra To recipients
-    const { c } = S.byKey[t.dataset.key];
-    const to = splitEmails(draftFor(c).to).map((e) => (e.toLowerCase() === (c.email || "").toLowerCase() ? t.dataset.email : e));
-    saveEditField(t.dataset.key, "to", joinAddrs(to));
+    useEmail(t.dataset.key, t.dataset.email);
     renderPanel(true); renderRows(); renderBar();
   },
   ins: (t) => {
