@@ -188,8 +188,15 @@ function draftFor(c, d = S.byKey[c.key].d) {
   return { ...baseDraft(c, d), ...(ov || {}), edited: !!ov && Object.keys(ov).length > 0 };
 }
 const toValid = (dr) => { const t = splitEmails(dr.to); return t.length > 0 && t.every((e) => EMAIL_RE.test(e)); };
-// the candidate's address: the tracker's, or the fix chosen for a typo in it (saved with the person's edits)
-const ownEmail = (c) => S.edits[c.key]?.email || c.email;
+// the candidate's address: the email directory's (Settings) first, then a fix chosen for a typo in the sheet's
+// address (saved with the person's edits), then the sheet's
+const ownEmail = (c) => (c.email_source === "directory" ? c.email : S.edits[c.key]?.email || c.email);
+// everyone in the tracker the directory doesn't list
+function notInDirectory() {
+  const names = new Map();
+  for (const d of S.wb?.days || []) for (const c of d.candidates) if (c.email_source !== "directory") names.set(c.name.toLowerCase(), c.name);
+  return [...names.values()].sort();
+}
 // the candidate's flagged address is still in To (the extra To recipients don't matter here)
 const issueOpen = (c, dr) => !!c.email_issue && splitEmails(dr.to).some((e) => e.toLowerCase() === (c.email || "").toLowerCase());
 function joinAddrs(...lists) {
@@ -380,7 +387,7 @@ function visibleRows() {
   if (!d) return [];
   const q = S.q.trim().toLowerCase();
   let list = d.candidates.filter(FILTERS[S.filter] || FILTERS.all);
-  if (q) list = list.filter((c) => `${c.name} ${c.email} ${c.emp_id}`.toLowerCase().includes(q));
+  if (q) list = list.filter((c) => `${c.name} ${c.email} ${c.sheet_email || ""} ${c.emp_id}`.toLowerCase().includes(q));
   if (S.filter !== "all") list = [...list].sort((a, b) => (a.productive ?? 1e9) - (b.productive ?? 1e9) || a.row - b.row);
   return list;
 }
@@ -465,7 +472,8 @@ function renderPanel(force = false) {
       <span>Row <b class="num">${c.row}</b></span></div>
       ${(c.apps || []).length ? `<div class="apps">${c.apps.slice(0, 6).map(([a, m]) => `<span class="appchip">${esc(a)} <b class="num">${hm(m)}</b></span>`).join("")}</div>`
         : `<div class="apps muted" style="font-size:12px">${c.logged ? "No App Usage row for this day" : "No app usage (no activity)"}</div>`}`;
-  const rowData = [["Name", c.name], ["Email", c.email], ["Emp ID", c.emp_id], ["Manager", c.manager], ["Productive", hm(c.productive)],
+  const rowData = [["Name", c.name], ["Email", ownEmail(c)],
+    ...(c.sheet_email && c.sheet_email.toLowerCase() !== ownEmail(c).toLowerCase() ? [["Email in the sheet", c.sheet_email]] : []), ["Emp ID", c.emp_id], ["Manager", c.manager], ["Productive", hm(c.productive)],
     ["Logged", hm(c.logged)], ["Idle", hm(c.idle)], ["Reason", c.reason], ...c.extra].filter(([, v]) => v && v !== "—");
   const details = `<details class="rowdata"><summary>${ic("grid")}Everything in the sheet row</summary>
     <dl class="kv">${rowData.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl></details>`;
@@ -891,6 +899,11 @@ function openSettings() {
           <select class="input" id="s-cc-field" style="width:auto"><option value="cc">Cc</option><option value="to">To</option></select>
           <button class="btn" id="s-cc-add">Add</button></div>
         <span class="hint">Added to every email: <b>To</b> goes next to the candidate's address, <b>Cc</b> in Cc. “On by default” ones are pre-ticked when you open emails; you can untick them per batch, or change one person's email.</span></div>
+      <div class="field"><label>Company email domain</label><input class="input" id="s-domain" value="${esc(s.email_domain || "")}" placeholder="e.g. ccsglobaltech.com" spellcheck="false">
+        <span class="hint">Addresses in the tracker on any other domain are flagged, with a one-click fix to this one.</span></div>
+      <div class="field"><label>Email directory</label>
+        <textarea class="input" id="s-dir" rows="6" spellcheck="false" placeholder="Sam Lee    slee@company.com&#10;Ana Ruiz    aruiz" style="font-family:var(--mono,monospace);font-size:12.5px">${esc((s.directory || []).map((e) => `${e.name}\t${e.email}`).join("\n"))}</textarea>
+        <span class="hint">One person per line: name, then address. A username alone gets the company domain. These addresses replace the tracker's, matched by name.${S.wb && (s.directory || []).length ? ` ${notInDirectory().length ? `Not listed: ${esc(notInDirectory().join(", "))}.` : "Everyone in the tracker is listed."}` : ""}</span></div>
       <div class="form-err" id="s-err"></div>`,
     foot: `<span class="grow"></span><button class="btn" data-act="close-modal">Cancel</button><button class="btn primary" id="s-save">Save</button>`,
     onEnter: () => { if (document.activeElement?.id === "s-cc-new") $("#s-cc-add").click(); else $("#s-save").click(); },
@@ -930,13 +943,16 @@ function openSettings() {
           btn.disabled = true; btn.innerHTML = `<span class="spinner sm"></span>Saving…`;
           const pending = $("#s-cc-new").value.trim();
           if (pending) throw new Error(`Click Add for ${pending}, or clear that box`);
-          const body = { threshold_min: t, cc_list: openSettings.ccList, sender_name: $("#s-name").value.trim() };
+          const body = { threshold_min: t, cc_list: openSettings.ccList, sender_name: $("#s-name").value.trim(),
+            email_domain: $("#s-domain").value.trim(), directory_text: $("#s-dir").value };
           const link = $("#s-link").value.trim();
           if (!S.st.demo && link && link !== s.link) body.link = link;
           const r = await api("settings", body);
           applyState(r);
           if (body.link && !r.workbook) S.wb = null;
-          closeModal(); renderAll(); toast("Settings saved");
+          closeModal(); renderAll();
+          const missing = S.wb && S.st.settings.directory?.length ? notInDirectory() : [];
+          toast(missing.length ? `Settings saved. Not in the email directory: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? ` and ${missing.length - 4} more` : ""}` : "Settings saved");
         } catch (e) {
           err.textContent = e.message;
           btn.disabled = false; btn.textContent = "Save";

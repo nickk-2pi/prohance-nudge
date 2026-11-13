@@ -22,8 +22,9 @@ messages; turn off its "New Outlook" toggle).
 4. Double-click **Start Nudge.cmd**. It opens http://localhost:8770 in your browser and leaves a minimized
    **Nudge server** window on the taskbar (closing it stops Nudge). If something is wrong, the launcher
    or that window says what. You can also start it by hand from this folder: `python server.py --open`.
-5. In **Settings**: your name for the sign-off, and the **Extra recipients** (who goes in To next to the
-   candidate, and who in Cc). These are saved on your PC only, in `data/`.
+5. In **Settings**: your name for the sign-off, the **Extra recipients** (who goes in To next to the
+   candidate, and who in Cc), the **Company email domain** (`ccsglobaltech.com`) and the **Email directory**
+   (see below). These are saved on your PC only, in `data/`.
 6. Load the tracker: paste the SharePoint link plus a token (see below), or open a downloaded copy.
 
 Your settings, sent log and email files live in `data/` and are never committed. Each person's copy keeps its
@@ -56,6 +57,20 @@ python -m unittest discover -s tests
 **Start automatically (optional):** `powershell -ExecutionPolicy Bypass -File install-autostart.ps1` starts
 Nudge silently when you sign in to Windows and adds a **Nudge** desktop shortcut. Undo with `-Remove`.
 
+## Email addresses
+
+The tracker's addresses can't be trusted as they are (many say `@pcsglobaltech.com`, and usernames don't
+always match the name). Two settings fix that:
+
+- **Email directory:** one person per line, name then address, e.g. `Sam Lee    slee`; a bare
+  username gets the company domain. Its addresses replace the tracker's, matched by name (word order and case
+  don't matter). Settings lists anyone in the tracker the directory doesn't cover.
+- **Company email domain:** anyone not in the directory whose address is on another domain is flagged, with a
+  one-click fix (same username, company domain). Check that fix: usernames sometimes differ.
+
+The sent log keeps using the tracker's address as each person's key, so adding the directory later doesn't
+make anyone look un-emailed.
+
 ## The token
 
 Only for reading the tracker from SharePoint. A token from Graph Explorer acts as you for about a day (24 h
@@ -77,7 +92,7 @@ tickets or files.
 - **Nothing fails silently or loudly:** a bad row becomes a **data check** and the rest still works; a tab
   that can't be read is shown as such and the other tabs still load. Checks: blank or unreadable hours,
   productive above logged, duplicates, Date column vs tab, active people without an App Usage row,
-  email addresses whose domain nobody else uses (with a fix for things like `.compush`).
+  email addresses off the company domain (see Email addresses).
 - **Statuses:** under threshold, or "No activity" (productive and logged both 0:00, own template).
 
 `tests/` covers each rule. `NUDGE_REAL_TRACKER=<path to a real tracker>` also runs a test against a real

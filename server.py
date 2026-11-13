@@ -97,13 +97,16 @@ class App:
         meta = self.store.cached_meta()
         if not meta:
             return None
-        key = (meta.get("ctag"), meta.get("fetched_from"), date.today())
+        cfg = self.store.config()
+        key = (meta.get("ctag"), meta.get("fetched_from"), date.today(),
+               json.dumps([cfg["directory"], cfg["email_domain"]], sort_keys=True))
         if self._parsed and self._parsed[0] == key:
             return {**self._parsed[1], "file": meta}
         meta, data = self.store.cached_file()
         t0 = time.perf_counter()
         try:
-            result = tracker.parse_workbook(xlsx.read_workbook(data))
+            result = tracker.parse_workbook(xlsx.read_workbook(data), directory=cfg["directory"],
+                                            domain=cfg["email_domain"])
         except (zipfile.BadZipFile, KeyError, ET.ParseError) as e:
             raise ApiError(f"The saved copy of the workbook can't be read ({type(e).__name__}). Load it again.") from None
         log.info("parsed workbook", extra={"days": len(result["days"]), "ms": round((time.perf_counter() - t0) * 1000)})
@@ -171,7 +174,7 @@ class App:
             "outlook": {"installed": True, "new_outlook_on": False} if self.demo else outlook.status(),
             "token": self.token_public(),
             "settings": {k: cfg.get(k) for k in ("link", "threshold_min", "cc", "to_also", "cc_list", "templates",
-                                                 "sender_name")},
+                                                 "sender_name", "email_domain", "directory")},
             "source": "demo" if self.demo else ("sharepoint" if meta and meta.get("fetched_from") not in (None, "local")
                                                   else ("local" if meta else None)),
         }
@@ -221,6 +224,20 @@ class App:
             cfg["cc_list"] = cc_list
         if "sender_name" in p:
             cfg["sender_name"] = str(p["sender_name"]).strip()[:120]
+        emails_changed = False
+        if "email_domain" in p:
+            dom = str(p["email_domain"] or "").strip().lstrip("@").lower()
+            if dom and not tracker.EMAIL_RE.match("x@" + dom):
+                raise ApiError(f"“{dom}” isn't a domain; it should look like company.com")
+            emails_changed |= dom != cfg["email_domain"]
+            cfg["email_domain"] = dom
+        if "directory_text" in p:
+            entries, problems = tracker.parse_directory(p["directory_text"], cfg["email_domain"])
+            if problems:
+                raise ApiError("Email directory: " + "; ".join(problems[:3])
+                               + (f" (and {len(problems) - 3} more)" if len(problems) > 3 else ""))
+            emails_changed |= entries != cfg["directory"]
+            cfg["directory"] = entries
         if "templates" in p:
             for kind, tpl in p["templates"].items():
                 if kind in cfg["templates"] and tpl.get("subject", "").strip() and tpl.get("body", "").strip():
@@ -241,6 +258,8 @@ class App:
             self._fetch(force=True)
             out = self.public_state()
             out["workbook"] = self.workbook()
+        elif emails_changed:
+            out["workbook"] = self.workbook()  # addresses changed: the page needs the re-checked list
         return out
 
     def api_upload(self, p):

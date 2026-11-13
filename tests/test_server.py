@@ -35,6 +35,27 @@ class Token(unittest.TestCase):
         self.assertFalse(app.api_token({"token": fake_token(scp="User.Read")})["token"]["can_read"])
 
 
+class EmailSettings(unittest.TestCase):
+    def setUp(self):
+        self.app = server.App(Store(tempfile.mkdtemp()), demo_mode=True)
+
+    def test_directory_usernames_get_the_domain(self):
+        s = self.app.api_settings({"email_domain": "@Example-Tech.com", "directory_text": "Sam Lee\tslee"})["settings"]
+        self.assertEqual(s["email_domain"], "example-tech.com")
+        self.assertEqual(s["directory"], [{"name": "Sam Lee", "email": "slee@example-tech.com"}])
+
+    def test_a_bad_line_is_refused_and_nothing_is_saved(self):
+        self.app.api_settings({"email_domain": "example-tech.com", "directory_text": "Sam Lee slee"})
+        with self.assertRaises(server.ApiError) as e:
+            self.app.api_settings({"directory_text": "Sam Lee slee\nJust-a-name"})
+        self.assertIn("Line 2", str(e.exception))
+        self.assertEqual(len(self.app.store.config()["directory"]), 1)
+
+    def test_a_bad_domain_is_refused(self):
+        with self.assertRaises(server.ApiError):
+            self.app.api_settings({"email_domain": "not a domain"})
+
+
 class ContentTypes(unittest.TestCase):
     def test_scripts_are_javascript_whatever_the_registry_says(self):
         self.assertEqual(server.content_type("app.js"), "text/javascript; charset=utf-8")

@@ -74,6 +74,8 @@ DEFAULT_CONFIG = {
     "to_also": [],     # derived: extra recipients on by default in To, next to the candidate
     "cc_list": [],     # [{"email": ..., "field": "to" | "cc", "default": true}] managed in Settings
     "sender_name": "",
+    "email_domain": "",  # e.g. "ccsglobaltech.com": other domains in the sheet are flagged as typos
+    "directory": [],     # [{"name", "email"}]: these addresses replace the sheet's (matched by name)
     "templates": DEFAULT_TEMPLATES,
 }
 

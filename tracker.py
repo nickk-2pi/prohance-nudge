@@ -292,32 +292,94 @@ def parse_app_usage(rows):
 
 # ---------------------------------------------------------------- email checks
 
-def _check_emails(days):
-    """Flag addresses that are malformed or whose domain nobody else in the workbook uses.
+def norm_name(s):
+    """'  Huimin  GUO ' -> 'huimin guo': for matching directory names to the tracker's."""
+    return " ".join(re.sub(r"[^a-z]+", " ", str(s or "").lower()).split())
 
-    A domain used by two or more different people is treated as real. Real domains can be one letter apart
-    (pcsglobaltech.com and ccsglobaltech.com are both genuine), so similar-looking domains are never "fixed"
-    into each other; a fix is only suggested when a lone domain is a real one with extra characters on the end
-    (pcsglobaltech.compush -> pcsglobaltech.com).
+
+def parse_directory(text, domain=""):
+    """Pasted lines of 'Name<tab or spaces>address' -> ([{name, email}], [problems]).
+
+    The address is the line's last word. A bare username (no @) gets @domain added. Blank lines are skipped.
     """
+    domain = (domain or "").strip().lstrip("@").lower()
+    entries, problems, seen = [], [], set()
+    for n, line in enumerate(str(text or "").splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.rsplit(None, 1)
+        if len(parts) < 2:
+            problems.append(f"Line {n}: “{line}” needs a name and an address")
+            continue
+        name, addr = parts[0].strip(" \t,;:-"), parts[1].strip(" <>,;")
+        if "@" not in addr:
+            if not domain:
+                problems.append(f"Line {n}: “{addr}” is a username; set the company email domain first")
+                continue
+            addr = f"{addr}@{domain}"
+        if not EMAIL_RE.match(addr):
+            problems.append(f"Line {n}: “{addr}” isn't a valid email address")
+            continue
+        if norm_name(name) in seen:
+            problems.append(f"Line {n}: {name} is listed twice")
+            continue
+        seen.add(norm_name(name))
+        entries.append({"name": name, "email": addr})
+    return entries, problems
+
+
+def _directory_lookup(directory):
+    exact, loose = {}, {}
+    for e in directory or []:
+        n = norm_name(e.get("name"))
+        if n and e.get("email"):
+            exact[n] = e["email"]
+            loose.setdefault(frozenset(n.split()), e["email"])  # same words in another order
+    return lambda name: exact.get(norm_name(name)) or loose.get(frozenset(norm_name(name).split()))
+
+
+def _check_emails(days, directory=None, domain=""):
+    """Settle each person's address and flag doubtful ones.
+
+    1. The email directory (Settings) wins: its address replaces the sheet's.
+    2. With a company domain set, any other domain is flagged, with the fix username@domain.
+    3. Without one, a domain used by two or more people counts as real, and a fix is only suggested when a lone
+       domain is a real one with extra characters on the end (example.compush -> example.com).
+    The sheet's address is kept in sheet_email; the person's key (and so the sent log) never changes.
+    """
+    domain = (domain or "").strip().lstrip("@").lower()
+    lookup = _directory_lookup(directory)
     people = {}
     for d in days:
         for c in d["candidates"]:
-            e = c["email"].strip().lower()
+            e = c.get("sheet_email", c["email"]).strip().lower()
             if e and EMAIL_RE.match(e):
                 people.setdefault(e.split("@", 1)[1], set()).add(e)
     known = {dom for dom, addrs in people.items() if len(addrs) >= 2}
     for d in days:
         for c in d["candidates"]:
-            e = c["email"].strip()
+            c.setdefault("sheet_email", c["email"])
+            c["email"], c["email_source"] = c["sheet_email"], "sheet"
             c["email_issue"] = c["email_suggestion"] = ""
+            listed = lookup(c["name"])
+            if listed:
+                c["email"], c["email_source"] = listed, "directory"
+                continue
+            e = c["email"].strip()
             if not e:
                 c["email_issue"] = "No email address in the sheet"
                 continue
             if not EMAIL_RE.match(e):
                 c["email_issue"] = "Not a valid email address"
                 continue
-            dom = e.split("@", 1)[1].lower()
+            local, dom = e.split("@", 1)[0], e.split("@", 1)[1].lower()
+            if domain:
+                if dom != domain:
+                    c["email_issue"] = (f"@{dom} looks like a typo of @{domain}" if dom.startswith(domain)
+                                        else f"@{dom} isn't the company domain @{domain}")
+                    c["email_suggestion"] = f"{local}@{domain}"
+                continue
             if dom in known or len(people) < 2:
                 continue
             c["email_issue"] = f"Nobody else uses @{dom}"
@@ -330,8 +392,10 @@ def _check_emails(days):
 
 # ---------------------------------------------------------------- the whole workbook
 
-def parse_workbook(sheets, today=None):
-    """sheets from xlsx.read_workbook -> {days: [...newest first], other_tabs, warnings}."""
+def parse_workbook(sheets, today=None, directory=None, domain=""):
+    """sheets from xlsx.read_workbook -> {days: [...newest first], other_tabs, warnings}.
+
+    directory ([{name, email}]) and domain come from Settings; see _check_emails."""
     today = today or date.today()
     days, other, file_warnings = [], [], []
     usage, usage_tab = {}, None
@@ -382,6 +446,6 @@ def parse_workbook(sheets, today=None):
         file_warnings.append({"level": "info", "tab": usage_tab,
                               "msg": f"App Usage has rows for {iso}, which has no day tab"})
 
-    _check_emails(days)
+    _check_emails(days, directory, domain)
     days.sort(key=lambda d: (d["date"], d["sheet"]), reverse=True)
     return {"days": days, "other_tabs": other, "warnings": file_warnings, "usage_tab": usage_tab}

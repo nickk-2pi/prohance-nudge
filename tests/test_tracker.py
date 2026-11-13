@@ -123,17 +123,59 @@ class Parse(unittest.TestCase):
         self.assertIsNone(by["10 Nov"]["error"])
         self.assertTrue(by["09 Nov"]["error"])
 
-    def test_two_real_domains_one_letter_apart_are_not_typos(self):
-        # the real tracker: pcsglobaltech.com and ccsglobaltech.com are both genuine
+    def test_without_a_company_domain_only_lone_domains_are_doubted(self):
+        # no domain set: any domain two people use counts as real, even one letter from another
         rows = [["User", "Email Id", "T.Productive hours"],
-                ["A One", "aone@pcsglobaltech.com", 0.1], ["B Two", "btwo@pcsglobaltech.com", 0.1],
-                ["C Three", "cthree@ccsglobaltech.com", 0.1], ["D Four", "dfour@ccsglobaltech.com", 0.1],
-                ["E Five", "efive@pcsglobaltech.compush", 0.1]]
+                ["A One", "aone@pcs-example.com", 0.1], ["B Two", "btwo@pcs-example.com", 0.1],
+                ["C Three", "cthree@ccs-example.com", 0.1], ["D Four", "dfour@ccs-example.com", 0.1],
+                ["E Five", "efive@pcs-example.compush", 0.1]]
         c = {x["name"]: x for x in wb_from(("10 Nov", rows))["days"][0]["candidates"]}
         for n in ("A One", "B Two", "C Three", "D Four"):
             self.assertEqual(c[n]["email_issue"], "", n)
         self.assertIn("typo", c["E Five"]["email_issue"])
-        self.assertEqual(c["E Five"]["email_suggestion"], "efive@pcsglobaltech.com")
+        self.assertEqual(c["E Five"]["email_suggestion"], "efive@pcs-example.com")
+
+
+ROWS = [["User", "Email Id", "T.Productive hours"],
+        ["Ann Lee", "ALee@pcs-example.com", 0.1], ["Bo Chen", "bchen@ccs-example.com", 0.1],
+        ["Cy Park", "CPark@pcs-example.compush", 0.1], ["Dee  Roy", "DRoy@pcs-example.com", 0.1]]
+
+
+def people(**kw):
+    sheets = xlsx.read_workbook(xlsx.write_workbook([("10 Nov", ROWS)]))
+    return {x["name"]: x for x in tracker.parse_workbook(sheets, TODAY, **kw)["days"][0]["candidates"]}
+
+
+class Emails(unittest.TestCase):
+    def test_company_domain_flags_every_other_domain_with_a_fix(self):
+        c = people(domain="ccs-example.com")
+        self.assertEqual(c["Bo Chen"]["email_issue"], "")
+        self.assertEqual(c["Ann Lee"]["email_suggestion"], "ALee@ccs-example.com")
+        self.assertIn("isn't the company domain", c["Ann Lee"]["email_issue"])
+        self.assertEqual(c["Cy Park"]["email_suggestion"], "CPark@ccs-example.com")
+
+    def test_directory_replaces_the_sheet_address_and_keeps_the_key(self):
+        before = people(domain="ccs-example.com")
+        after = people(domain="ccs-example.com", directory=[
+            {"name": "ann lee", "email": "alee@ccs-example.com"},
+            {"name": "Roy Dee", "email": "dravi@ccs-example.com"}])  # words in another order still match
+        self.assertEqual(after["Ann Lee"]["email"], "alee@ccs-example.com")
+        self.assertEqual(after["Ann Lee"]["email_source"], "directory")
+        self.assertEqual(after["Ann Lee"]["email_issue"], "")
+        self.assertEqual(after["Ann Lee"]["sheet_email"], "ALee@pcs-example.com")
+        self.assertEqual(after["Ann Lee"]["key"], before["Ann Lee"]["key"])  # the sent log still lines up
+        self.assertEqual(after["Dee  Roy"]["email"], "dravi@ccs-example.com")
+        self.assertEqual(after["Cy Park"]["email_source"], "sheet")  # not listed: still checked
+
+    def test_parse_directory(self):
+        text = ("Ann Lee        alee@ccs-example.com\n\nSam Lee\tslee\n"
+                "Mary Ann O'Neil   moneil\nnobody\nBad One   bad@@x\nann  lee  other@ccs-example.com\n")
+        entries, problems = tracker.parse_directory(text, "ccs-example.com")
+        self.assertEqual(entries, [{"name": "Ann Lee", "email": "alee@ccs-example.com"},
+                                   {"name": "Sam Lee", "email": "slee@ccs-example.com"},
+                                   {"name": "Mary Ann O'Neil", "email": "moneil@ccs-example.com"}])
+        self.assertEqual(len(problems), 3)  # no address, invalid address, listed twice
+        self.assertTrue(tracker.parse_directory("Sam Lee slee", "")[1])  # a username needs the domain
 
 
 USAGE_HEAD = ["User", "Employee ID", "Date", "Logged Hours ", "Time On System ", "Time Away From System ",
