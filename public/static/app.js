@@ -246,8 +246,8 @@ function appsHtml(c) {
 }
 // {details}: two plain tables side by side, the person's row in the day tab ("ProHance") and their row in the App
 // Usage tab, every column in sheet order with the sheet's own headers. No grouping, no calculations, no
-// filtering (only Manager1/Manager2 are left out); a blank cell stays blank.
-const SKIP_COLUMN = /^manager\s*\d*$/i; // Manager1, Manager2
+// filtering (only Manager1/Manager2, the employee ID and the email address are left out); a blank cell stays blank.
+const SKIP_COLUMN = /^(manager\s*\d*|emp(loyee)?\s*id|e-?mail(\s*id)?)$/i; // Manager1, Manager2, Emp ID, Employee ID, Email Id
 const TD = "padding:4px 8px;vertical-align:top;border:1px solid #e3e5e8;font-size:12.5px;color:#1f2328;";
 function rawTable(title, rows) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">` +
@@ -257,7 +257,7 @@ function rawTable(title, rows) {
     `</table>`;
 }
 const prohanceRows = (c) => (c.record || []).filter(([h]) => !SKIP_COLUMN.test(String(h).trim())).map(([h, v]) => [String(h), String(v ?? "")]);
-const usageRows = (c) => (c.usage_record || []).map(([h, v]) => [String(h), String(v ?? "")]);
+const usageRows = (c) => (c.usage_record || []).filter(([h]) => !SKIP_COLUMN.test(String(h).trim())).map(([h, v]) => [String(h), String(v ?? "")]);
 function detailsHtml(c) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:760px;margin:2px 0 14px"><tr>` +
     `<td width="50%" style="vertical-align:top;padding:0 6px 0 0">${rawTable("ProHance", prohanceRows(c))}</td>` +
