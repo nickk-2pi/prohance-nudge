@@ -11,13 +11,17 @@ Python (standard library).
 
 ## Set up on a new PC
 
-Needs Windows, **Python 3.10 or newer** and **classic Outlook** (new Outlook can't open the emails as new
+Needs Windows, **Python 3.9 or newer** and **classic Outlook** (new Outlook can't open the emails as new
 messages; turn off its "New Outlook" toggle).
 
 1. Install Python from [python.org](https://www.python.org/downloads/) and tick **Add python.exe to PATH**.
+   The Microsoft Store's "python" placeholder doesn't count: if typing `python --version` in a terminal opens
+   the Store or prints nothing, install from python.org.
 2. Get the code: `git clone <this repo's URL>` (or **Code → Download ZIP** on GitHub and unzip it).
 3. Check it works: `python -m unittest discover -s tests` should end with `OK`.
-4. Double-click **Start Nudge.cmd**. It opens http://localhost:8770 in your browser.
+4. Double-click **Start Nudge.cmd**. It opens http://localhost:8770 in your browser and leaves a minimized
+   **Nudge server** window on the taskbar (closing it stops Nudge). If something is wrong, the launcher
+   or that window says what. You can also start it by hand from this folder: `python server.py --open`.
 5. In **Settings**: your name for the sign-off, and the **Extra recipients** (who goes in To next to the
    candidate, and who in Cc). These are saved on your PC only, in `data/`.
 6. Load the tracker: paste the SharePoint link plus a token (see below), or open a downloaded copy.
